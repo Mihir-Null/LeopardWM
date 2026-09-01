@@ -267,7 +267,7 @@ pub fn hotkey_catalog() -> Vec<HotkeyAction> {
         ),
         action(
             "toggle_new_window_placement",
-            None,
+            Some("F13+N"),
             "Toggle new-window placement (new column / in column)",
             "Window",
         ),
@@ -533,6 +533,7 @@ mod tests {
             ("F13+S", "scratchpad_toggle"),
             ("F13+Shift+S", "scratchpad_stash"),
             ("F13+Y", "toggle_sticky"),
+            ("F13+N", "toggle_new_window_placement"),
             ("F13+P", "toggle_pause"),
             ("F13+R", "refresh"),
             ("F13+Shift+R", "reload"),
