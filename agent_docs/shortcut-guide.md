@@ -70,8 +70,11 @@ PowerToys modifier fields; the trigger is emitted as its Win32 virtual-key
 number.
 
 PowerToys does not expose fields for LeopardWM's F13-F24-as-modifier extension.
-Those chords are skipped with a warning until compatibility is verified.
-F13-F24 remain valid when used as the terminal trigger key.
+The personal branch represents its F13 desktop layer as a leading Caps Lock
+virtual key, matching the external PowerToys Keyboard Manager Caps Lock-to-F13
+remap without changing the daemon's effective binding. F14-F24 and multiple
+F-key modifiers remain skipped with a warning. F13-F24 remain valid when used
+as the terminal trigger key.
 
 YAML is rendered deterministically using double-quoted, JSON-escaped scalar
 values. This avoids a new serialization dependency while remaining valid YAML.

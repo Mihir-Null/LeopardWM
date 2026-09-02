@@ -18,6 +18,8 @@ use windows::Win32::Storage::FileSystem::{
 };
 
 const MANIFEST_FILE_NAME: &str = "LeopardWM.LeopardWM.en-US.yml";
+const F13_MODIFIER_BIT: u16 = 1;
+const VK_CAPITAL: u32 = 0x14;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PowerToysChord {
@@ -25,7 +27,7 @@ struct PowerToysChord {
     ctrl: bool,
     alt: bool,
     shift: bool,
-    key: u32,
+    keys: Vec<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -116,20 +118,24 @@ fn render_manifest(hotkeys: &[HotkeyBindingInfo]) -> RenderedManifest {
                 continue;
             };
 
-            if modifiers.fn_mods != 0 {
-                warnings.push(format!(
-                    "skipped '{}' for {} because PowerToys cannot represent F13-F24 modifiers",
-                    binding, hotkey.action_id
-                ));
-                continue;
-            }
+            let keys = match modifiers.fn_mods {
+                0 => vec![key],
+                F13_MODIFIER_BIT => vec![VK_CAPITAL, key],
+                _ => {
+                    warnings.push(format!(
+                        "skipped '{}' for {} because F14-F24 and multiple F-key modifiers cannot be represented accurately",
+                        binding, hotkey.action_id
+                    ));
+                    continue;
+                }
+            };
 
             chords.push(PowerToysChord {
                 win: modifiers.win,
                 ctrl: modifiers.ctrl,
                 alt: modifiers.alt,
                 shift: modifiers.shift,
-                key,
+                keys,
             });
         }
 
@@ -183,7 +189,9 @@ fn render_yaml(sections: &[PowerToysSection]) -> String {
                 writeln!(out, "            Alt: {}", chord.alt).expect("write to string");
                 writeln!(out, "            Shift: {}", chord.shift).expect("write to string");
                 writeln!(out, "            Keys:").expect("write to string");
-                writeln!(out, "              - {}", chord.key).expect("write to string");
+                for key in &chord.keys {
+                    writeln!(out, "              - {key}").expect("write to string");
+                }
             }
         }
     }
@@ -339,16 +347,26 @@ Shortcuts:
     }
 
     #[test]
-    fn skips_f_key_modifiers_but_keeps_f_key_triggers() {
+    fn renders_f13_modifier_as_caps_lock_for_personal_layer() {
+        let rendered = render_manifest(&[hotkey("focus_left", "Focus left", "Focus", &["F13+H"])]);
+
+        assert!(rendered.warnings.is_empty());
+        assert!(rendered
+            .yaml
+            .contains("Keys:\n              - 20\n              - 72\n"));
+    }
+
+    #[test]
+    fn skips_unsupported_f_key_modifiers_but_keeps_f_key_triggers() {
         let rendered = render_manifest(&[hotkey(
             "focus_left",
             "Focus left",
             "Focus",
-            &["F13+H", "Ctrl+F13"],
+            &["F14+H", "Ctrl+F13"],
         )]);
 
         assert_eq!(rendered.warnings.len(), 1);
-        assert!(rendered.warnings[0].contains("F13-F24 modifiers"));
+        assert!(rendered.warnings[0].contains("F14-F24"));
         assert!(rendered.yaml.contains("Ctrl: true"));
         assert!(rendered.yaml.contains("- 124"));
         assert!(!rendered.yaml.contains("- 72"));
