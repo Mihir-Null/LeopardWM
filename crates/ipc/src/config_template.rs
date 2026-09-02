@@ -19,7 +19,7 @@ pub fn render_default_config() -> String {
 pub fn render_config(overrides: &TemplateOverrides) -> String {
     let gap = overrides.gap.unwrap_or(10);
     let outer_gap = overrides.outer_gap.unwrap_or(10);
-    let centering_mode = overrides.centering_mode.unwrap_or("center");
+    let centering_mode = overrides.centering_mode.unwrap_or("just_in_view");
     let header = match overrides.profile_name {
         Some(name) => format!("# LeopardWM Configuration — {name} profile"),
         None => "# LeopardWM Configuration".to_string(),
@@ -129,10 +129,10 @@ opacity = 128
 [animation]
 # Animation timing. Durations in milliseconds; 0 = snap instantly.
 # easing accepts "linear" | "ease_in" | "ease_out" | "ease_in_out".
-layout_duration_ms = 150            # column move / resize / tab changes
-workspace_switch_duration_ms = 200  # switching workspaces
-scroll_duration_ms = 200            # scrolling a column into view
-overview_duration_ms = 150          # overview open/close zoom
+layout_duration_ms = 50             # column move / resize / tab changes
+workspace_switch_duration_ms = 50   # switching workspaces
+scroll_duration_ms = 50             # scrolling a column into view
+overview_duration_ms = 50           # overview open/close zoom
 easing = "ease_out"
 # Skip animations while on battery / Windows power saver (saves power).
 # Set false to keep animations on battery. The Windows "show animations"
@@ -209,7 +209,11 @@ mod tests {
         }
         assert!(config.starts_with("# LeopardWM Configuration\n"));
         assert!(config.contains("gap = 10"));
-        assert!(config.contains("centering_mode = \"center\""));
+        assert!(config.contains("centering_mode = \"just_in_view\""));
+        assert!(config.contains("layout_duration_ms = 50"));
+        assert!(config.contains("workspace_switch_duration_ms = 50"));
+        assert!(config.contains("scroll_duration_ms = 50"));
+        assert!(config.contains("overview_duration_ms = 50"));
         assert!(config.contains("\"Win+Ctrl+Escape\" = \"panic_revert\""));
     }
 

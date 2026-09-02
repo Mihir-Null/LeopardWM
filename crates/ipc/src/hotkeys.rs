@@ -54,12 +54,7 @@ pub fn hotkey_catalog() -> Vec<HotkeyAction> {
             "Focus start of strip",
             "Focus",
         ),
-        action(
-            "focus_end",
-            Some("F13+End"),
-            "Focus end of strip",
-            "Focus",
-        ),
+        action("focus_end", Some("F13+End"), "Focus end of strip", "Focus"),
         action(
             "move_column_left",
             Some("F13+Shift+H"),
@@ -259,31 +254,16 @@ pub fn hotkey_catalog() -> Vec<HotkeyAction> {
             "Stash to scratchpad",
             "Window",
         ),
-        action(
-            "toggle_sticky",
-            Some("F13+Y"),
-            "Toggle sticky",
-            "Window",
-        ),
+        action("toggle_sticky", Some("F13+Y"), "Toggle sticky", "Window"),
         action(
             "toggle_new_window_placement",
             Some("F13+N"),
             "Toggle new-window placement (new column / in column)",
             "Window",
         ),
-        action(
-            "toggle_pause",
-            Some("F13+P"),
-            "Toggle pause",
-            "Session",
-        ),
+        action("toggle_pause", Some("F13+P"), "Toggle pause", "Session"),
         action("refresh", Some("F13+R"), "Refresh", "Session"),
-        action(
-            "reload",
-            Some("F13+Shift+R"),
-            "Reload config",
-            "Session",
-        ),
+        action("reload", Some("F13+Shift+R"), "Reload config", "Session"),
         action(
             "panic_revert",
             Some("Win+Ctrl+Escape"),

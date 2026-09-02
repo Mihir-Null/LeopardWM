@@ -255,9 +255,9 @@ impl LayoutConfig {
 #[serde(rename_all = "snake_case")]
 pub enum CenteringModeConfig {
     /// Center the focused column in the viewport.
-    #[default]
     Center,
     /// Only scroll if the focused column would be outside the viewport.
+    #[default]
     JustInView,
     /// Center only when the focused column is wider than the viewport;
     /// otherwise behave like `JustInView`.
@@ -886,19 +886,19 @@ pub struct AnimationConfig {
 pub const MAX_ANIMATION_DURATION_MS: u64 = 2000;
 
 fn default_layout_duration() -> u64 {
-    150
+    50
 }
 
 fn default_workspace_switch_duration() -> u64 {
-    200
+    50
 }
 
 fn default_scroll_duration() -> u64 {
-    200
+    50
 }
 
 fn default_overview_duration() -> u64 {
-    150
+    50
 }
 
 fn default_reduce_motion_on_battery() -> bool {
@@ -1511,7 +1511,10 @@ mod tests {
         assert_eq!(config.layout.outer_gap_top, 10);
         assert_eq!(config.layout.outer_gap_bottom, 10);
         assert_eq!(config.layout.width_presets, vec![0.333, 0.5, 0.667]);
-        assert_eq!(config.layout.centering_mode, CenteringModeConfig::Center);
+        assert_eq!(
+            config.layout.centering_mode,
+            CenteringModeConfig::JustInView
+        );
         assert!(config.behavior.focus_new_windows);
     }
 
@@ -1558,53 +1561,53 @@ mod tests {
     #[test]
     fn test_hotkey_config_default() {
         let config = HotkeyConfig::default();
-        assert_eq!(config.bindings.len(), 68);
+        assert_eq!(config.bindings.len(), 69);
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Space"),
+            config.bindings.get("F13+Space"),
             Some(&"toggle_overview".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+T"),
+            config.bindings.get("F13+T"),
             Some(&"toggle_tabbed".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+,"),
+            config.bindings.get("F13+,"),
             Some(&"consume_from_left".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+."),
+            config.bindings.get("F13+."),
             Some(&"consume_from_right".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+S"),
+            config.bindings.get("F13+S"),
             Some(&"scratchpad_toggle".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Shift+S"),
+            config.bindings.get("F13+Shift+S"),
             Some(&"scratchpad_stash".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Y"),
+            config.bindings.get("F13+Y"),
             Some(&"toggle_sticky".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+H"),
+            config.bindings.get("F13+H"),
             Some(&"focus_left".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+L"),
+            config.bindings.get("F13+L"),
             Some(&"focus_right".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Shift+H"),
+            config.bindings.get("F13+Shift+H"),
             Some(&"move_column_left".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+-"),
+            config.bindings.get("F13+-"),
             Some(&"cycle_width_down".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Win+,"),
+            config.bindings.get("F13+Ctrl+H"),
             Some(&"focus_monitor_left".to_string())
         );
         assert_eq!(
@@ -1720,15 +1723,15 @@ mod tests {
             user.bindings.get("Ctrl+Alt+X"),
             Some(&"focus_left".to_string())
         );
-        assert!(!user.bindings.contains_key("Ctrl+Alt+H"));
+        assert!(!user.bindings.contains_key("F13+H"));
 
         // New commands from defaults are present
         assert_eq!(
-            user.bindings.get("Ctrl+Alt+["),
+            user.bindings.get("F13+["),
             Some(&"move_window_left".to_string())
         );
         assert_eq!(
-            user.bindings.get("Ctrl+Alt+Shift+J"),
+            user.bindings.get("F13+Shift+J"),
             Some(&"move_window_down".to_string())
         );
     }
@@ -2390,10 +2393,10 @@ mod tests {
     #[test]
     fn test_animation_config_defaults() {
         let config = Config::default();
-        assert_eq!(config.animation.layout_duration_ms, 150);
-        assert_eq!(config.animation.workspace_switch_duration_ms, 200);
-        assert_eq!(config.animation.scroll_duration_ms, 200);
-        assert_eq!(config.animation.overview_duration_ms, 150);
+        assert_eq!(config.animation.layout_duration_ms, 50);
+        assert_eq!(config.animation.workspace_switch_duration_ms, 50);
+        assert_eq!(config.animation.scroll_duration_ms, 50);
+        assert_eq!(config.animation.overview_duration_ms, 50);
         assert_eq!(
             config.animation.easing,
             leopardwm_core_layout::Easing::EaseOut
@@ -2448,8 +2451,8 @@ mod tests {
         );
         assert_eq!(config.animation.layout_duration_ms, 80);
         // Unspecified fields fall back to defaults.
-        assert_eq!(config.animation.scroll_duration_ms, 200);
-        assert_eq!(config.animation.overview_duration_ms, 150);
+        assert_eq!(config.animation.scroll_duration_ms, 50);
+        assert_eq!(config.animation.overview_duration_ms, 50);
     }
 
     #[test]
