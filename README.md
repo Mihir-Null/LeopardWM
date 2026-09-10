@@ -119,14 +119,23 @@ cargo build --release
 Start the daemon:
 
 ```bash
-./target/release/leopardwm.exe
+./target/x86_64-pc-windows-msvc/release/leopardwm.exe
 ```
 
 A default config is created automatically at `%APPDATA%\leopardwm\config\config.toml`. Customize via the tray icon → Settings, or edit the file directly.
 
+For a quick edit-and-redeploy loop, stop the running daemon, rebuild, and start
+the new binary:
+
+```bash
+lwm stop
+cargo build --release
+./target/x86_64-pc-windows-msvc/release/leopardwm.exe
+```
+
 ## Default Hotkeys
 
-Most hotkeys use `Ctrl+Alt` as the base modifier. Layered pattern: base = focus, +Shift = move, +Win = monitor scope. Every hotkey is rebindable in `config.toml`. Combos Windows reserves (like `Win+Ctrl+Arrow`) can't be bound directly, but the opt-in **Reclaim Windows-reserved shortcuts** setting lets you use them anyway.
+The personal defaults use `F13` as a dedicated desktop modifier, with Caps Lock remapped to F13 in PowerToys Keyboard Manager. Layered pattern: base = focus, +Shift = move, +Ctrl = monitor scope. Every hotkey is rebindable in `config.toml`. Combos Windows reserves (like `Win+Ctrl+Arrow`) can't be bound directly, but the opt-in **Reclaim Windows-reserved shortcuts** setting lets you use them anyway.
 
 | Key | Action |
 |---|---|

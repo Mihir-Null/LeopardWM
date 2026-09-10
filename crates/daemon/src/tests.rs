@@ -4532,7 +4532,7 @@ fn test_cmd_query_hotkeys_returns_catalog_order_and_defaults() {
     assert_eq!(hotkeys[0].action_id, catalog[0].id);
     assert_eq!(hotkeys[0].label, catalog[0].label);
     assert_eq!(hotkeys[0].group, catalog[0].group);
-    assert_eq!(hotkeys[0].bindings, vec!["Ctrl+Alt+H"]);
+    assert_eq!(hotkeys[0].bindings, vec!["F13+H"]);
     assert!(hotkeys[0].enabled);
     assert_eq!(scroll_modifier, "Ctrl+Alt");
     assert!(issues.is_empty());

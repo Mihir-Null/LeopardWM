@@ -1558,53 +1558,53 @@ mod tests {
     #[test]
     fn test_hotkey_config_default() {
         let config = HotkeyConfig::default();
-        assert_eq!(config.bindings.len(), 68);
+        assert_eq!(config.bindings.len(), 69);
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Space"),
+            config.bindings.get("F13+Space"),
             Some(&"toggle_overview".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+T"),
+            config.bindings.get("F13+T"),
             Some(&"toggle_tabbed".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+,"),
+            config.bindings.get("F13+,"),
             Some(&"consume_from_left".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+."),
+            config.bindings.get("F13+."),
             Some(&"consume_from_right".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+S"),
+            config.bindings.get("F13+S"),
             Some(&"scratchpad_toggle".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Shift+S"),
+            config.bindings.get("F13+Shift+S"),
             Some(&"scratchpad_stash".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Y"),
+            config.bindings.get("F13+Y"),
             Some(&"toggle_sticky".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+H"),
+            config.bindings.get("F13+H"),
             Some(&"focus_left".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+L"),
+            config.bindings.get("F13+L"),
             Some(&"focus_right".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Shift+H"),
+            config.bindings.get("F13+Shift+H"),
             Some(&"move_column_left".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+-"),
+            config.bindings.get("F13+-"),
             Some(&"cycle_width_down".to_string())
         );
         assert_eq!(
-            config.bindings.get("Ctrl+Alt+Win+,"),
+            config.bindings.get("F13+Ctrl+H"),
             Some(&"focus_monitor_left".to_string())
         );
         assert_eq!(
@@ -1720,15 +1720,15 @@ mod tests {
             user.bindings.get("Ctrl+Alt+X"),
             Some(&"focus_left".to_string())
         );
-        assert!(!user.bindings.contains_key("Ctrl+Alt+H"));
+        assert!(!user.bindings.contains_key("F13+H"));
 
         // New commands from defaults are present
         assert_eq!(
-            user.bindings.get("Ctrl+Alt+["),
+            user.bindings.get("F13+["),
             Some(&"move_window_left".to_string())
         );
         assert_eq!(
-            user.bindings.get("Ctrl+Alt+Shift+J"),
+            user.bindings.get("F13+Shift+J"),
             Some(&"move_window_down".to_string())
         );
     }
