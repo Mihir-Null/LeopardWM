@@ -242,6 +242,9 @@ lwm export-shortcut-guide --install
 
 The command writes
 `%LOCALAPPDATA%\Microsoft\WinGet\KeyboardShortcuts\LeopardWM.LeopardWM.en-US.yml`.
+On the personal branch, F13 modifiers are displayed as Caps Lock to match the
+PowerToys Keyboard Manager Caps Lock-to-F13 remap; LeopardWM's effective
+bindings remain F13-based.
 With PowerToys running and Shortcut Guide enabled, press `Win+Shift+?` to open
 the guide. Run the exporter again after changing hotkeys. Use
 `--output <path>` instead of `--install` to inspect or version the generated
