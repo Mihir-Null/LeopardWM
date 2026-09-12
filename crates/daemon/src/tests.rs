@@ -4675,6 +4675,121 @@ fn test_cmd_query_hotkeys_excludes_f_key_trigger_used_as_modifier() {
 }
 
 #[test]
+fn test_cmd_query_hotkeys_resolves_collisions_independent_of_insertion_order() {
+    let entries = [
+        ("Ctrl+Alt+H", "focus_right"),
+        ("Alt+Control+h", "Focus-Left"),
+    ];
+    let mut previous = None;
+    for reverse in [false, true] {
+        let mut config = test_config();
+        config.hotkeys.bindings.clear();
+        let mut ordered = entries.to_vec();
+        if reverse {
+            ordered.reverse();
+        }
+        for (binding, action) in ordered {
+            config
+                .hotkeys
+                .bindings
+                .insert(binding.into(), action.into());
+        }
+        let runtime = hotkey_resolution::resolve_hotkeys(&config.hotkeys);
+        assert_eq!(runtime.bindings.len(), 1);
+        assert_eq!(runtime.bindings[0].command, IpcCommand::FocusLeft);
+        assert_eq!(runtime.bindings[0].hook_binding.id, 0x348);
+        let mut state = AppState::new_with_config(config, test_monitors());
+        let response = state.handle_command(IpcCommand::QueryHotkeys);
+        let IpcResponse::HotkeyList {
+            hotkeys, issues, ..
+        } = &response
+        else {
+            panic!("Expected HotkeyList");
+        };
+        let left = hotkeys
+            .iter()
+            .find(|h| h.action_id == "focus_left")
+            .unwrap();
+        let right = hotkeys
+            .iter()
+            .find(|h| h.action_id == "focus_right")
+            .unwrap();
+        assert_eq!(left.bindings, vec!["Alt+Control+h"]);
+        assert!(left.enabled);
+        assert!(right.bindings.is_empty());
+        assert!(!right.enabled);
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].binding, "Ctrl+Alt+H");
+        assert_eq!(issues[0].action_id, "focus_right");
+        assert!(issues[0].message.contains("Alt+Control+h"));
+        assert!(issues[0].message.contains("Focus-Left"));
+        if let Some(previous) = previous {
+            assert_eq!(response, previous);
+        }
+        previous = Some(response);
+    }
+}
+
+#[test]
+fn test_cmd_query_hotkeys_reports_redundant_alias_for_same_action() {
+    let mut config = test_config();
+    config.hotkeys.bindings.clear();
+    config
+        .hotkeys
+        .bindings
+        .insert("Win+Left".into(), "focus_left".into());
+    config
+        .hotkeys
+        .bindings
+        .insert("Meta+Left".into(), "focus-left".into());
+    let mut state = AppState::new_with_config(config, test_monitors());
+    let IpcResponse::HotkeyList {
+        hotkeys, issues, ..
+    } = state.handle_command(IpcCommand::QueryHotkeys)
+    else {
+        panic!("Expected HotkeyList");
+    };
+    let left = hotkeys
+        .iter()
+        .find(|h| h.action_id == "focus_left")
+        .unwrap();
+    assert_eq!(left.bindings, vec!["Meta+Left"]);
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].binding, "Win+Left");
+    assert!(issues[0].message.contains("Meta+Left"));
+}
+
+#[test]
+fn test_cmd_query_hotkeys_f_key_issue_preserves_loaded_action_identifier() {
+    let mut config = test_config();
+    config.hotkeys.bindings.clear();
+    config
+        .hotkeys
+        .bindings
+        .insert("F13+H".into(), "focus_left".into());
+    config
+        .hotkeys
+        .bindings
+        .insert("Ctrl+F13".into(), "Resize-Grow".into());
+    let mut state = AppState::new_with_config(config, test_monitors());
+    let IpcResponse::HotkeyList {
+        hotkeys, issues, ..
+    } = state.handle_command(IpcCommand::QueryHotkeys)
+    else {
+        panic!("Expected HotkeyList");
+    };
+    assert_eq!(issues.len(), 1);
+    assert_eq!(issues[0].binding, "Ctrl+F13");
+    assert_eq!(issues[0].action_id, "Resize-Grow");
+    let grow = hotkeys
+        .iter()
+        .find(|h| h.action_id == "cycle_width_up")
+        .unwrap();
+    assert!(!grow.enabled);
+    assert!(grow.bindings.is_empty());
+}
+
+#[test]
 fn test_cmd_focus_up_empty() {
     let mut state = AppState::new_with_config(test_config(), test_monitors());
     let resp = state.handle_command(IpcCommand::FocusUp);

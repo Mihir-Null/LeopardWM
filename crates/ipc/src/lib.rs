@@ -179,9 +179,10 @@ pub struct HotkeyBindingInfo {
 /// A hotkey configuration entry that could not become an executable binding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HotkeyIssue {
-    /// Original configured chord.
+    /// Original chord spelling in the loaded configuration.
     pub binding: String,
-    /// Original configured action identifier.
+    /// Action identifier as present in the loaded configuration, before query
+    /// normalization. Config-file migrations may already have renamed it.
     pub action_id: String,
     /// Human-readable validation failure.
     pub message: String,
@@ -615,7 +616,8 @@ pub enum IpcResponse {
         hotkeys: Vec<HotkeyBindingInfo>,
         /// Modifier chord required for mouse-wheel workspace scrolling.
         scroll_modifier: String,
-        /// Invalid chords and unknown action identifiers, sorted stably.
+        /// Invalid entries, duplicate physical chords, and F-key modifier
+        /// conflicts, sorted stably.
         issues: Vec<HotkeyIssue>,
     },
 

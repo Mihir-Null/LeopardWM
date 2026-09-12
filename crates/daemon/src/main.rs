@@ -18,6 +18,7 @@ mod drag;
 mod event_handler;
 mod events;
 mod helpers;
+mod hotkey_resolution;
 mod ipc_server;
 mod layout_apply;
 mod monitors;
@@ -47,12 +48,12 @@ use config::Config;
 use leopardwm_core_layout::Rect;
 use leopardwm_ipc::{pipe_name_candidates, preferred_pipe_name, IpcCommand, IpcResponse};
 use leopardwm_platform_win32::{
-    cascade_windows, enumerate_monitors, enumerate_windows, fn_mod_bit, install_event_hooks,
-    install_keyboard_hook, install_mouse_hook, overlay::OverlayWindow, parse_hotkey_string,
-    register_gestures, register_system_events, restore_windows_moved_offscreen,
-    set_display_change_sender, set_dpi_awareness, set_power_state_sender, set_session_end_handler,
-    uncloak_all_visible_windows, GestureEvent, Hotkey, HotkeyBind, HotkeyId, KeyboardHookHandle,
-    Modifiers, MonitorId, MonitorInfo, MouseHookHandle, WindowEvent,
+    cascade_windows, enumerate_monitors, enumerate_windows, install_event_hooks,
+    install_keyboard_hook, install_mouse_hook, overlay::OverlayWindow, register_gestures,
+    register_system_events, restore_windows_moved_offscreen, set_display_change_sender,
+    set_dpi_awareness, set_power_state_sender, set_session_end_handler,
+    uncloak_all_visible_windows, GestureEvent, HotkeyBind, HotkeyId, KeyboardHookHandle, Modifiers,
+    MonitorId, MonitorInfo, MouseHookHandle, WindowEvent,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -453,56 +454,30 @@ fn setup_system_event_handle() -> Option<leopardwm_platform_win32::SystemEventHa
 }
 
 fn setup_hotkeys(config: &Config, event_tx: mpsc::Sender<DaemonEvent>) -> HotkeyState {
-    let config_hotkeys = &config.hotkeys.bindings;
-
-    // Build hook binds and command mapping. IDs are intrinsic to each
-    // (modifiers, vk) combo via `Hotkey::stable_id`, NOT sequential, so a
-    // config reload can never remap an existing ID to a different command.
+    let resolved = hotkey_resolution::resolve_hotkeys(&config.hotkeys);
     let mut binds: Vec<HotkeyBind> = Vec::new();
     let mut mapping = HashMap::new();
     let mut bind_labels: Vec<BindInfo> = Vec::new();
 
-    for (key_str, cmd_str) in config_hotkeys {
-        if let Some((modifiers, vk)) = parse_hotkey_string(key_str) {
-            if let Some(cmd) = config::parse_command(cmd_str) {
-                let id = Hotkey::stable_id(modifiers, vk);
-                if mapping.contains_key(&id) {
-                    warn!(
-                        "Duplicate hotkey combo for {} (id {}); ignoring the second binding",
-                        key_str, id
-                    );
-                    continue;
-                }
-                binds.push(HotkeyBind { modifiers, vk, id });
-                mapping.insert(id, cmd);
-                bind_labels.push((id, key_str.clone(), modifiers, vk));
-                debug!("Configured hotkey {}: {} -> {:?}", id, key_str, cmd_str);
-            } else {
-                warn!(
-                    "Unknown command in hotkey config: {} -> {}",
-                    key_str, cmd_str
-                );
-            }
-        } else {
-            warn!("Invalid hotkey string in config: {}", key_str);
-        }
+    for issue in &resolved.issues {
+        warn!(
+            "Hotkey {} -> {}: {}",
+            issue.binding, issue.action_id, issue.message
+        );
     }
-
+    // Include blocked F-key triggers to preserve the hook's modifier mask.
+    // Resolution already deduplicated physical IDs, including across aliases.
+    for entry in resolved.bindings {
+        let HotkeyBind { modifiers, vk, id } = entry.hook_binding;
+        debug!(
+            "Configured hotkey {}: {} -> {:?}",
+            id, entry.binding, entry.command
+        );
+        binds.push(entry.hook_binding);
+        mapping.insert(id, entry.command);
+        bind_labels.push((id, entry.binding, modifiers, vk));
+    }
     let requested_count = binds.len();
-
-    // An F13–F24 key used as a modifier is swallowed by the hook, so any bind
-    // whose trigger is that same F-key can never fire. Warn rather than fail.
-    let fn_mod_mask = binds.iter().fold(0u16, |m, b| m | b.modifiers.fn_mods);
-    for (_, key_str, _, vk) in &bind_labels {
-        if let Some(bit) = fn_mod_bit(*vk) {
-            if bit & fn_mod_mask != 0 {
-                warn!(
-                    "Hotkey {} uses an F-key that is also configured as a modifier; it will never fire",
-                    key_str
-                );
-            }
-        }
-    }
 
     // The system-event window (display/work-area/power/session-end) is
     // independent of hotkeys; create it regardless so notifications arrive.

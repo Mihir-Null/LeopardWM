@@ -994,8 +994,17 @@ impl CompiledWindowRule {
 /// variants (e.g. "panic-revert") by normalizing to underscores before
 /// the shared catalog lookup.
 pub fn parse_command(cmd: &str) -> Option<leopardwm_ipc::IpcCommand> {
-    let normalized = cmd.to_lowercase().replace('-', "_");
-    leopardwm_ipc::hotkeys::command_for_action(&normalized)
+    leopardwm_ipc::hotkeys::command_for_action(&canonical_action_id(cmd))
+}
+
+/// Normalize an action identifier and apply the same renames as config migration.
+/// Keep the loaded spelling separately when reporting configuration issues.
+pub(crate) fn canonical_action_id(action: &str) -> String {
+    let normalized = action.to_lowercase().replace('-', "_");
+    HOTKEY_COMMAND_RENAMES
+        .iter()
+        .find_map(|(old, new)| (normalized == *old).then(|| (*new).to_string()))
+        .unwrap_or(normalized)
 }
 
 /// Deprecated hotkey command names that should be removed during migration.

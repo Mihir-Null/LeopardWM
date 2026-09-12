@@ -1,13 +1,13 @@
 //! IPC command handling for AppState.
 
-use crate::config::{self, Config};
+use crate::config::Config;
+use crate::hotkey_resolution::resolve_hotkeys;
 use crate::state::{validate_set_width_fraction, AppState, PendingWorkspaceSwitchFocus};
 use leopardwm_core_layout::{Rect, Workspace};
-use leopardwm_ipc::{HotkeyBindingInfo, HotkeyIssue, IpcCommand, IpcResponse};
+use leopardwm_ipc::{HotkeyBindingInfo, IpcCommand, IpcResponse};
 use leopardwm_platform_win32::{
-    enumerate_windows, fn_mod_bit, get_process_executable, monitor_above, monitor_below,
-    monitor_to_left, monitor_to_right, move_window_offscreen, parse_hotkey_string, MonitorId,
-    MonitorInfo,
+    enumerate_windows, get_process_executable, monitor_above, monitor_below, monitor_to_left,
+    monitor_to_right, move_window_offscreen, MonitorId, MonitorInfo,
 };
 use std::collections::HashMap;
 use tracing::{debug, info};
@@ -813,64 +813,14 @@ impl AppState {
     fn handle_query_hotkeys(&self) -> IpcResponse {
         let catalog = leopardwm_ipc::hotkeys::hotkey_catalog();
         let mut bindings_by_action: HashMap<String, Vec<String>> = HashMap::new();
-        let mut issues = Vec::new();
-        let mut executable_candidates = Vec::new();
-
-        let mut configured: Vec<_> = self.config.hotkeys.bindings.iter().collect();
-        configured.sort_by(
-            |(left_binding, left_action), (right_binding, right_action)| {
-                left_binding
-                    .cmp(right_binding)
-                    .then_with(|| left_action.cmp(right_action))
-            },
-        );
-
-        for (binding, configured_action) in configured {
-            let normalized_action = configured_action.to_lowercase().replace('-', "_");
-            let action_id = match normalized_action.as_str() {
-                "resize_grow" => "cycle_width_up".to_string(),
-                "resize_shrink" => "cycle_width_down".to_string(),
-                _ => normalized_action,
-            };
-            let valid_action = config::parse_command(&action_id).is_some();
-            let parsed_binding = parse_hotkey_string(binding);
-
-            if !valid_action {
-                issues.push(HotkeyIssue {
-                    binding: binding.clone(),
-                    action_id: configured_action.clone(),
-                    message: "unknown action identifier".to_string(),
-                });
+        let resolved = resolve_hotkeys(&self.config.hotkeys);
+        for entry in resolved.bindings {
+            if entry.executable {
+                bindings_by_action
+                    .entry(entry.action_id)
+                    .or_default()
+                    .push(entry.binding);
             }
-            if parsed_binding.is_none() {
-                issues.push(HotkeyIssue {
-                    binding: binding.clone(),
-                    action_id: configured_action.clone(),
-                    message: "invalid key chord".to_string(),
-                });
-            }
-
-            if let (true, Some((modifiers, key))) = (valid_action, parsed_binding) {
-                executable_candidates.push((binding.clone(), action_id, modifiers, key));
-            }
-        }
-
-        let fn_modifier_mask = executable_candidates
-            .iter()
-            .fold(0u16, |mask, (_, _, modifiers, _)| mask | modifiers.fn_mods);
-        for (binding, action_id, _, key) in executable_candidates {
-            if fn_mod_bit(key).is_some_and(|bit| bit & fn_modifier_mask != 0) {
-                issues.push(HotkeyIssue {
-                    binding,
-                    action_id,
-                    message: "trigger F-key is also configured as a modifier".to_string(),
-                });
-                continue;
-            }
-            bindings_by_action
-                .entry(action_id)
-                .or_default()
-                .push(binding);
         }
 
         let mut hotkeys: Vec<_> = catalog
@@ -900,17 +850,10 @@ impl AppState {
                 bindings,
             }
         }));
-        issues.sort_by(|left, right| {
-            left.binding
-                .cmp(&right.binding)
-                .then_with(|| left.action_id.cmp(&right.action_id))
-                .then_with(|| left.message.cmp(&right.message))
-        });
-
         IpcResponse::HotkeyList {
             hotkeys,
             scroll_modifier: self.config.hotkeys.scroll_modifier.clone(),
-            issues,
+            issues: resolved.issues,
         }
     }
 
