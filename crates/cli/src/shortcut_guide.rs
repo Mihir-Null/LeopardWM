@@ -29,15 +29,15 @@ struct PowerToysChord {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct PowerToysAction {
+struct PowerToysShortcut {
     name: String,
-    chords: Vec<PowerToysChord>,
+    chord: PowerToysChord,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PowerToysSection {
     name: String,
-    actions: Vec<PowerToysAction>,
+    shortcuts: Vec<PowerToysShortcut>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -106,7 +106,7 @@ fn render_manifest(hotkeys: &[HotkeyBindingInfo]) -> RenderedManifest {
             continue;
         }
 
-        let mut chords = Vec::new();
+        let mut shortcuts = Vec::new();
         for binding in &hotkey.bindings {
             let Some((modifiers, key)) = parse_hotkey_string(binding) else {
                 warnings.push(format!(
@@ -124,30 +124,29 @@ fn render_manifest(hotkeys: &[HotkeyBindingInfo]) -> RenderedManifest {
                 continue;
             }
 
-            chords.push(PowerToysChord {
-                win: modifiers.win,
-                ctrl: modifiers.ctrl,
-                alt: modifiers.alt,
-                shift: modifiers.shift,
-                key,
+            shortcuts.push(PowerToysShortcut {
+                name: hotkey.label.clone(),
+                chord: PowerToysChord {
+                    win: modifiers.win,
+                    ctrl: modifiers.ctrl,
+                    alt: modifiers.alt,
+                    shift: modifiers.shift,
+                    key,
+                },
             });
         }
 
-        if chords.is_empty() {
+        if shortcuts.is_empty() {
             continue;
         }
 
-        let action = PowerToysAction {
-            name: hotkey.label.clone(),
-            chords,
-        };
         if let Some(index) = section_indexes.get(&hotkey.group).copied() {
-            sections[index].actions.push(action);
+            sections[index].shortcuts.extend(shortcuts);
         } else {
             section_indexes.insert(hotkey.group.clone(), sections.len());
             sections.push(PowerToysSection {
                 name: hotkey.group.clone(),
-                actions: vec![action],
+                shortcuts,
             });
         }
     }
@@ -174,17 +173,17 @@ fn render_yaml(sections: &[PowerToysSection]) -> String {
     for section in sections {
         writeln!(out, "  - SectionName: {}", yaml_quote(&section.name)).expect("write to string");
         writeln!(out, "    Properties:").expect("write to string");
-        for action in &section.actions {
-            writeln!(out, "      - Name: {}", yaml_quote(&action.name)).expect("write to string");
+        for shortcut in &section.shortcuts {
+            writeln!(out, "      - Name: {}", yaml_quote(&shortcut.name)).expect("write to string");
             writeln!(out, "        Shortcut:").expect("write to string");
-            for chord in &action.chords {
-                writeln!(out, "          - Win: {}", chord.win).expect("write to string");
-                writeln!(out, "            Ctrl: {}", chord.ctrl).expect("write to string");
-                writeln!(out, "            Alt: {}", chord.alt).expect("write to string");
-                writeln!(out, "            Shift: {}", chord.shift).expect("write to string");
-                writeln!(out, "            Keys:").expect("write to string");
-                writeln!(out, "              - {}", chord.key).expect("write to string");
-            }
+            // PowerToys treats this array as a sequence, not alternatives.
+            let chord = &shortcut.chord;
+            writeln!(out, "          - Win: {}", chord.win).expect("write to string");
+            writeln!(out, "            Ctrl: {}", chord.ctrl).expect("write to string");
+            writeln!(out, "            Alt: {}", chord.alt).expect("write to string");
+            writeln!(out, "            Shift: {}", chord.shift).expect("write to string");
+            writeln!(out, "            Keys:").expect("write to string");
+            writeln!(out, "              - {}", chord.key).expect("write to string");
         }
     }
     out
@@ -317,6 +316,8 @@ Shortcuts:
             Shift: false
             Keys:
               - 72
+      - Name: "Focus \"left\""
+        Shortcut:
           - Win: true
             Ctrl: false
             Alt: false

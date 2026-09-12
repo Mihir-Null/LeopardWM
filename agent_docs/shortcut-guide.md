@@ -58,8 +58,11 @@ uses the stable filename `LeopardWM.LeopardWM.en-US.yml` under:
 The manifest uses `BackgroundProcess: true` and matches `leopardwm.exe`,
 which makes LeopardWM available while the daemon is running. Actions stay in
 first-seen group and action order; a repeated non-contiguous group is merged
-back into its first section. Multiple bindings become alternative `Shortcut`
-entries.
+back into its first section. Each binding becomes a separate `Properties` item,
+repeating the action name and containing exactly one chord in its `Shortcut`
+array. PowerToys interprets multiple chords in one `Shortcut` array as sequential
+steps, not alternative bindings. The golden manifest test covers two independent
+bindings for the same action.
 
 ## Conversion boundary
 
