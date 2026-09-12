@@ -238,6 +238,17 @@ the guide. Run the exporter again after changing hotkeys. Use
 `--output <path>` instead of `--install` to inspect or version the generated
 YAML, or omit both options to print it to stdout.
 
+Use CLI and daemon binaries from the same build; the hotkey query requires IPC
+v3. The guide is a snapshot, so reload LeopardWM and export again after changing
+bindings. Reopen Shortcut Guide to inspect the updated manifest.
+
+Each alternative binding is displayed separately. Equivalent spellings of the
+same physical chord are resolved consistently: the lexicographically first valid
+configured binding wins, and warnings identify ignored collisions. F13-F24 used
+as modifiers cannot be represented by PowerToys and are skipped with a warning;
+F13-F24 used as ordinary trigger keys can be exported. Warnings go to stderr so
+stdout remains usable YAML.
+
 ### Layout commands
 
 Most users drive the layout via hotkeys, but every hotkey has a CLI equivalent — useful for scripting or AutoHotkey integration.

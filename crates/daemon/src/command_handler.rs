@@ -30,13 +30,7 @@ enum FullscreenPolicy {
     Allow,
 }
 
-/// Whether `cmd` navigates focus to a (possibly different) window, so the
-/// cursor should follow it when `mouse_follows_focus` is on. Covers in-column
-/// and cross-column focus, cross-monitor focus, and cross-monitor window moves
-/// (focus travels with the window). The explicit workspace-switch commands are
-/// excluded here; the caller only warps when the focused window actually
-/// changed, so an edge-wrap focus command that crosses into another workspace
-/// still warps onto the window it lands on.
+/// Generate a display label for a valid action outside the catalog.
 fn humanize_action_id(action_id: &str) -> String {
     let mut label = action_id.replace('_', " ");
     if let Some(first) = label.get_mut(0..1) {
@@ -45,6 +39,13 @@ fn humanize_action_id(action_id: &str) -> String {
     label
 }
 
+/// Whether `cmd` navigates focus to a (possibly different) window, so the
+/// cursor should follow it when `mouse_follows_focus` is on. Covers in-column
+/// and cross-column focus, cross-monitor focus, and cross-monitor window moves
+/// (focus travels with the window). The explicit workspace-switch commands are
+/// excluded here; the caller only warps when the focused window actually
+/// changed, so an edge-wrap focus command that crosses into another workspace
+/// still warps onto the window it lands on.
 fn is_focus_navigation(cmd: &IpcCommand) -> bool {
     use IpcCommand::*;
     matches!(
@@ -809,7 +810,7 @@ impl AppState {
         }
     }
 
-    /// Handle `IpcCommand::QueryAllWindows`.
+    /// Handle `IpcCommand::QueryHotkeys`.
     fn handle_query_hotkeys(&self) -> IpcResponse {
         let catalog = leopardwm_ipc::hotkeys::hotkey_catalog();
         let mut bindings_by_action: HashMap<String, Vec<String>> = HashMap::new();
@@ -857,6 +858,7 @@ impl AppState {
         }
     }
 
+    /// Handle `IpcCommand::QueryAllWindows`.
     fn handle_query_all_windows(&mut self) -> IpcResponse {
         let mut windows = Vec::new();
 

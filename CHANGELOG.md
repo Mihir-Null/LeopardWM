@@ -6,6 +6,13 @@ All notable changes to LeopardWM will be documented in this file.
 
 ### Features
 
+- **Query effective hotkeys and export a PowerToys Shortcut Guide manifest.**
+  `lwm query hotkeys` lists resolved bindings and configuration diagnostics;
+  `lwm export-shortcut-guide` writes YAML to stdout, `--output PATH` writes a
+  file, and `--install` atomically replaces the user manifest. Alternative
+  bindings appear as separate shortcuts. Unsupported F13-F24 modifiers are
+  skipped with a warning.
+
 - **Window rules can set their initial column width in Settings.** The rule
   Options menu accepts a viewport fraction from `0.05` to `1.0`, or a blank
   value for automatic sizing. Invalid values are highlighted without blocking
@@ -24,6 +31,11 @@ All notable changes to LeopardWM will be documented in this file.
 
 ### Fixes
 
+- **Equivalent hotkey spellings choose the same action after every reload.**
+  Registration and queries share physical-chord deduplication. The first valid
+  binding in lexicographic order wins; ignored collisions identify the retained
+  binding and action in diagnostics.
+
 - **New windows stay on the monitor where Windows opens them.** Monitor
   selection uses opening bounds when they map to an attached monitor; otherwise
   it retains the focused monitor, while preserving fullscreen stacking without
@@ -40,6 +52,10 @@ All notable changes to LeopardWM will be documented in this file.
   remeasured once.
 
 ### Internal
+
+- **IPC protocol v3 adds `QueryHotkeys` and `HotkeyList`.** Existing v1/v2
+  subscription clients remain supported; the new query/export commands require
+  a daemon implementing v3.
 
 - **Developer-only synthetic touchpad diagnostic.** The platform example records
   observed low-level wheel message kind, delta, coordinates, timestamp, and

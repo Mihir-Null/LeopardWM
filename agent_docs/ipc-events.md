@@ -22,6 +22,22 @@ Press Ctrl+C to disconnect. The daemon does not need to know who is listening; r
 - **Framing**: newline-delimited JSON (`\n`), one logical message per line. UTF-8.
 - **Per-frame size cap**: 64 KiB (`MAX_IPC_MESSAGE_SIZE` in `crates/ipc/src/lib.rs:22`).
 
+## Protocol versions and the hotkey query
+
+The current IPC protocol is v3; the minimum supported version remains v1.
+Version 2 added tabbed-column data and commands. Version 3 adds the one-shot
+`QueryHotkeys` command (`{"type":"query_hotkeys"}`) and `HotkeyList` response
+(`status: "hotkey_list"`) with binding records, scroll modifier, and issues.
+See [the hotkey query contract](shortcut-guide.md#ipc-contract) for ordering,
+collision resolution, and the distinction between configuration and runtime
+registration health.
+
+The additions do not change the subscription framing or event schemas below.
+Existing v1/v2 subscription clients remain supported. An older daemon does not
+implement the new query simply because an older protocol is still supported;
+use matching CLI and daemon builds for `lwm query hotkeys` and
+`lwm export-shortcut-guide`. Queries need a separate pipe while subscribed.
+
 ## Connection lifecycle
 
 ```
