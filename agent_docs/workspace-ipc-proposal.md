@@ -35,7 +35,7 @@ Extend the existing `Subscribe` command and `IpcEvent` contract with an explicit
 receive complete initial and replacement snapshots. There is no new subscription
 subcommand, transport, or subscription-specific response type. Add a one-shot
 workspace query and monitor-targeted switching within the existing query/command
-infrastructure. Protocol 3 records the additive capability; existing protocol 1/2
+infrastructure. Protocol 3 provisionally records the additive capability; existing protocol 1/2
 wire requests retain their behavior.
 
 Choose opt-in for the first upstream PR. Plain `lwm subscribe` and an empty wire
@@ -52,6 +52,11 @@ Adding only more LayoutChanged messages would still conflate layout and membersh
 Fine-grained membership deltas would save bandwidth but require more recovery and
 ordering logic. Start with complete, deduplicated snapshots on the existing event
 stream; optimize only with measurements.
+
+IPC v3 is provisional: PR #110 also proposes v3. Reconcile the version/history
+against upstream at merge time; capability detection uses the acknowledged filter,
+not a version-number assumption. The legacy-default exception is an explicit
+compatibility decision for maintainer review, not an existing upstream rule.
 
 ## Proposed commands
 
@@ -137,18 +142,17 @@ The real sequence includes all nine workspace records for every connected monito
 3. The client stages begin/chunk records and replaces its displayed model only at
    the matching end. EOF/error before end discards the staged snapshot. Never mix
    chunks from different revisions or daemon sessions.
-4. Add a shared latest-state channel using existing Tokio watch support and
-   immutable Arc snapshots. The existing subscription handler selects this channel
-   only when workspace_state was requested. Slow consumers finish their current
-   captured snapshot and then receive the newest revision. Skipped intermediate
-   revisions are valid because snapshots replace all state. No unbounded queue.
-5. Reuse the existing subscription heartbeat, disconnect handling, connection
-   permit release, and legacy broadcast delivery. Write each snapshot transaction
-   without interleaving heartbeat or legacy events. Mixed subscriptions resume
-   requested legacy delivery between complete snapshots. If the legacy receiver
-   lags, emit the existing Lagged event between transactions; reconnect recovery
-   captures both initial states atomically. A bounded write timeout closes a
-   stalled connection and releases its resources.
+4. Publish snapshot begin/chunk/end events through the existing
+   `AppState::broadcast_event` and its 256-event broadcast channel. Build and
+   preflight the complete frame sequence before publishing under the state lock,
+   so other state mutations cannot interleave a snapshot. Do not add a watch channel.
+5. Reuse subscription heartbeat, disconnect handling, and connection permit release.
+   Defer heartbeats while a snapshot transaction is being written. On broadcast
+   lag, workspace-state subscribers receive Lagged and disconnect; they discard any
+   partial snapshot and reconnect for a fresh atomic initial snapshot. Legacy-only
+   subscribers retain existing recovery behavior. A bounded write timeout releases
+   stalled clients. Oversized initial snapshots are written directly and are not
+   limited to 256 frames; lag on later large bursts is explicit, never silent.
 6. Read-only queries and new subscriptions do not themselves increment revisions.
    The one-shot query terminates after its complete snapshot, with no heartbeat.
 
@@ -208,8 +212,8 @@ one-based to preserve the established API. Convert once at the command boundary.
    `crates/daemon/src/workspace_ipc.rs`; wire state, startup/subscription handling,
    and post-event publication through `state.rs`, `events.rs`, and `main.rs`.
    Keep snapshot projection testable with synthetic monitor/workspace data.
-3. **Transport** — extend existing Subscribe handling in `ipc_server.rs` to attach
-   the latest-state receiver only on opt-in, and route the one-shot query through
+3. **Transport** — extend existing Subscribe handling in `ipc_server.rs` to include
+   workspace-state events only on opt-in, and route the one-shot query through
    the same snapshot builder/encoder. Reuse connection lifecycle and event writing.
    Cover mixed subscriptions, atomic capture, frame limits, and slow readers.
 4. **Switch command and CLI** — update `command_handler.rs`, CLI args/dispatch,
@@ -218,7 +222,8 @@ one-based to preserve the established API. Convert once at the command boundary.
    Add `query workspaces` and `workspace N --monitor`; reuse transition behavior.
 5. **Documentation and consumer contract** — update `agent_docs/ipc-events.md`
    and public Rust API comments with opt-in examples, indexes, monitor semantics,
-   and recovery rules. YASB implementation is a separate repository PR.
+   and recovery rules. Add a target-release CHANGELOG.md entry for the IPC/CLI
+   additions. YASB implementation is a separate repository PR.
 
 Each implementation commit includes its relevant tests. No generated/vendor files,
 new third-party dependencies, runtime deployment, or YASB edits are required here.
