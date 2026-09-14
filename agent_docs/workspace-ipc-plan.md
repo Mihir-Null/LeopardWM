@@ -35,26 +35,26 @@ String, index: u8 }. Response: WorkspaceStateReady { protocol_version: u32 }.
 
 ## Tasks
 
-- [ ] 1. Protocol and CLI: extend ipc types, filters, snapshot encoder; add
+- [x] 1. Protocol and CLI: extend ipc types, filters, snapshot encoder; add
   `lwm subscribe --events workspace_state`, `lwm query workspaces`, and
   `lwm workspace N --monitor NAME`. Keep CLI thin. Tests first: deserialize new
   commands/filter against current code and observe rejection; then add types.
   Test full record round-trips, old defaults, byte-bounded non-ASCII chunking,
   oversize record errors, CLI dispatch, ack consumption, and frame limits.
-- [ ] 2. Targeted switching: implement validated explicit-monitor command in
+- [x] 2. Targeted switching: implement validated explicit-monitor command in
   command_handler.rs, reusing the existing transition/focus path. Regression tests
   cover invalid target/index (no side effects), unfocused target, already-active
   target focus, empty destination, and unchanged other-monitor active workspace.
-- [ ] 3. State publication and transport: add workspace_ipc.rs; store dedup state
+- [x] 3. State publication and transport: add workspace_ipc.rs; store dedup state
   in AppState; project all nine slots per live monitor from actual WM membership.
   Publish after event handling and capture under the same lock as Subscribe.
   Route query through existing subscribe snapshot handoff in one-shot mode.
   Test inactive/floating/tabbed membership, labels/topology/focus, geometry dedup,
   startup ordering, lag, mixed subscriptions, and disconnect/write timeout.
-- [ ] 4. Maintained docs and changelog: document actual schemas, compatibility,
+- [x] 4. Maintained docs and changelog: document actual schemas, compatibility,
   recovery, provisional version, and consumer examples in ipc-events.md/README.md;
   record the feature in CHANGELOG.md. Keep this design file consistent with code.
-- [ ] 5. Review and verification: review complete diff, resolve findings; run
+- [x] 5. Review and verification: review complete diff, resolve findings; run
   cargo fmt --all -- --check, cargo test --all --locked,
   cargo clippy --all --locked -- -D warnings, cargo build --release --locked,
   and existing CI artifact scripts. Commit focused implementation. Report actual
@@ -70,3 +70,49 @@ Ruling: use event-loop publication as the common mutation completion boundary,
 with explicit query/subscribe synchronization; audit early-continue paths.
 Baseline: prior cargo test --all --locked, fmt check, and Clippy passed on unchanged
 Rust source. Each implementation task records its new red/green tests here.
+
+
+Implementation review:
+- Protocol RED: unknown workspace_state filter/query/targeted-switch variants.
+- Daemon RED: initial state subscription rejected the unknown filter. GREEN:
+  complete membership/revisions/startup and transport tests pass.
+- Targeted switching RED: six missing-variant tests, then floating-focus history
+  regression. GREEN: seven targeted tests; preserved source overview ordering.
+- Root transport review: finite one-shot queries must retain the semaphore permit.
+  The new >256-frame initial snapshot test fails without that fix (available
+  permits 1 vs expected 0), then passes with it restored.
+- Added regression coverage for minimized/inactive-tab membership, floating/sticky
+  flags, scratchpad visibility, moves/removal, same-length renames, topology/focus,
+  geometry deduplication, atomic handoff, mixed/legacy filters, partial lag,
+  oversized records, initial snapshots over broadcaster capacity, and write timeout.
+- Encoder review removed repeated growing-chunk serialization; byte accounting is
+  linear in record bytes with a final whole-frame preflight.
+- Next release is provisionally 0.2.9 in CHANGELOG; do not change the released
+  workspace/package version or generated artifacts during this feature task.
+- Desktop acceptance remains a separate explicit deployment step; automated tests
+  use synthetic monitors/handles and in-memory duplex transport.
+- Drag audit found merge previews temporarily remove the real HWND from layout.
+  Added a failing regression and retained its source ownership via DragState until
+  drop, excluding the placeholder and avoiding a spurious empty workspace.
+- Full-suite environment finding: unchanged test_cmd_reload assumed no user
+  config and expected default gap 10, but this desktop has gap 12. The isolated
+  test reproduced it. Corrected only the test: load the expected effective gap,
+  start with a different value, and assert Reload applies it. No user config or
+  production reload behavior changed.
+
+
+Final verification (2026-09-13):
+- cargo fmt --all -- --check: passed.
+- cargo test --all --locked: 1,302 passed, zero failed, seven existing ignored
+  tests (totals include both CLI binary targets and doc tests).
+- cargo clippy --all --locked -- -D warnings: passed.
+- cargo build --release --locked: passed on x86_64-pc-windows-msvc.
+- Existing verify-gui-subsystems.ps1 and verify-scoop-manifest.ps1: passed.
+- Release CLI help exposes workspace --monitor, query workspaces and the
+  workspace_state filter; help-only smoke checks passed without daemon commands.
+- Documented NDJSON parses and monitor escaping matches the actual device-name
+  form. git diff --check passed. Existing duplicate CLI target warning remains.
+- Kept local for inspection; no push, merge, YASB changes or daemon deployment.
+  Real two-monitor/floating-focus/overview/restart acceptance remains pending the
+  separately authorized desktop deployment step. Protocol/release numbers remain
+  provisional for upstream merge-order review.

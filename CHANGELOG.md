@@ -2,6 +2,18 @@
 
 All notable changes to LeopardWM will be documented in this file.
 
+## 0.2.9 (unreleased)
+
+### Features
+
+- **Complete workspace state over the existing IPC subscription.** Opt in with
+  `lwm subscribe --events workspace_state` for coherent, byte-bounded snapshots
+  covering every connected monitor, all nine workspace slots, and tiled/floating
+  membership. Legacy default subscriptions remain unchanged. `lwm query workspaces`
+  returns one snapshot; `lwm workspace N --monitor DEVICE` selects a workspace on
+  an explicit monitor. Protocol 3 is provisional pending merge-order reconciliation
+  with upstream PR #110. See `agent_docs/ipc-events.md` for schemas and recovery.
+
 ## 0.2.8
 
 ### Features

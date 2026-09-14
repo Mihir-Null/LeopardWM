@@ -249,8 +249,11 @@ This is also exposed as a Settings UI toggle and a tray menu item.
 ### Subscribe to events (status bars, custom integrations)
 
 ```bash
-lwm subscribe                                       # all events, newline-delimited JSON
+lwm subscribe                                       # legacy event kinds, newline-delimited JSON
 lwm subscribe --events workspace,focused_window     # filtered subset
+lwm subscribe --events workspace_state              # complete all-monitor workspace state
+lwm query workspaces                                 # one complete workspace snapshot
+lwm workspace 2 --monitor '\\.\DISPLAY2'            # select a workspace on that display
 lwm subscribe | jq                                   # pretty-printed in another terminal
 ```
 

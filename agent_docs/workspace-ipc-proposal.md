@@ -33,7 +33,7 @@ The persisted workspace-state.json file is no longer the integration API.
 Extend the existing `Subscribe` command and `IpcEvent` contract with an explicit
 `workspace_state` event filter. Use `lwm subscribe --events workspace_state` to
 receive complete initial and replacement snapshots. There is no new subscription
-subcommand, transport, or subscription-specific response type. Add a one-shot
+subcommand or transport. Add a one-shot
 workspace query and monitor-targeted switching within the existing query/command
 infrastructure. Protocol 3 provisionally records the additive capability; existing protocol 1/2
 wire requests retain their behavior.
@@ -128,13 +128,13 @@ for clarity). The CLI consumes the first line, exactly as existing subscribe doe
 
 The real sequence includes all nine workspace records for every connected monitor.
 
-1. Capture an immutable snapshot and attach its update receiver atomically under
-   the state mutex, alongside the existing legacy broadcast receiver if needed.
+1. Capture an immutable snapshot and attach the existing broadcast receiver
+   atomically under the state mutex; mixed subscriptions share that receiver.
    Start at revision 0; advance monotonically when semantic state changes. Include
    protocol version and session ID in each begin event. The session ID changes on
    daemon restart, not on client reconnect.
-2. Serialize and write outside the lock. Pack records by actual UTF-8 serialized
-   byte length, including the trailing newline; every frame is at most 64 KiB.
+2. Preflight frame sizes in memory under the lock; serialize transport frames
+   and write outside the lock. Pack records by actual UTF-8 serialized byte length, including the trailing newline; every frame is at most 64 KiB.
    Preflight all record sizes. A single oversized record produces
    `workspace_snapshot_error` with a bounded message, then closes the connection.
    Never truncate membership or substitute a successful snapshot end. Avoid the
@@ -168,7 +168,7 @@ unsupported capability rather than silently reverting to incomplete data.
 Add an AppState helper that constructs the compact workspace view and compares it
 with the previous view. Invoke publication after each completed daemon event,
 including window lifecycle, hotkey/IPC commands, configuration reload, display
-reconfiguration, and focus changes. Initialize the publisher before serving clients.
+reconfiguration, and focus changes. Initialize the cached view on the first completed event or subscription/query capture.
 Audit early-continue paths so none bypass a relevant state publication.
 
 Compare semantic values exactly, not only a hash. Window rectangles, animation

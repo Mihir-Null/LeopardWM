@@ -623,6 +623,8 @@ pub(crate) struct AppState {
     /// used to dedup repeat emissions when the layout signature is
     /// unchanged (e.g. animation frames between settled positions).
     pub(crate) last_emitted_layout_sig: Option<u64>,
+    /// Last complete workspace model and its daemon-session identity.
+    pub(crate) workspace_ipc_state: crate::workspace_ipc::WorkspaceIpcState,
     /// Sender for debounced workspace-state saves. Installed at startup
     /// via `install_save_channel`; left `None` under cfg(test) and before
     /// wiring so `request_save_if_changed` is a no-op then.
@@ -899,6 +901,7 @@ impl AppState {
             // and is expected to reconnect with a fresh Subscribe.
             event_broadcaster: tokio::sync::broadcast::channel(256).0,
             last_emitted_layout_sig: None,
+            workspace_ipc_state: Default::default(),
             save_request_tx: None,
             last_persisted_sig: None,
             pending_tab_focus: None,
