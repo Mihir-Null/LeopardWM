@@ -30,28 +30,48 @@ The persisted workspace-state.json file is no longer the integration API.
 
 ## Chosen approach and alternatives
 
-Add an explicit workspace-state stream with full replacement snapshots, plus a
-monitor-targeted switch command. Retain the named-pipe transport and JSON-line
-framing. Protocol 3 advertises this capability; protocol 1/2 commands remain usable.
+Extend the existing `Subscribe` command and `IpcEvent` contract with an explicit
+`workspace_state` event filter. Use `lwm subscribe --events workspace_state` to
+receive complete initial and replacement snapshots. There is no new subscription
+subcommand, transport, or subscription-specific response type. Add a one-shot
+workspace query and monitor-targeted switching within the existing query/command
+infrastructure. Protocol 3 records the additive capability; existing protocol 1/2
+wire requests retain their behavior.
 
-A file watcher would reduce polling but retain persistence-schema coupling and
-poor liveness semantics. Extending the old layout stream would require clients to
-reconstruct missing background state and risks old enum deserializers. Fine-grained
-membership deltas would save bandwidth but require more recovery and ordering
-logic. Start with complete, deduplicated snapshots; optimize only with measurements.
+Choose opt-in for the first upstream PR. Plain `lwm subscribe` and an empty wire
+filter retain the current legacy event set; they do not start emitting new variants
+to older clients. Internally, distinguish `EventKind::all()` (every known kind)
+from a named `legacy_default()` set used to expand an empty subscription filter.
+Update CLI help, documentation, and tests that currently say empty means all.
+Explicit lists can combine `workspace_state` with existing event kinds. Making it
+a default later requires an explicit compatibility/migration decision, not a silent
+change to the legacy default in this PR.
+
+A file watcher would retain persistence-schema coupling and poor liveness semantics.
+Adding only more LayoutChanged messages would still conflate layout and membership.
+Fine-grained membership deltas would save bandwidth but require more recovery and
+ordering logic. Start with complete, deduplicated snapshots on the existing event
+stream; optimize only with measurements.
 
 ## Proposed commands
 
 | Wire command | CLI | Result |
 | --- | --- | --- |
-| `{"type":"subscribe_workspace_state"}` | `lwm subscribe-workspaces` | Ack, initial snapshot, replacement snapshots, heartbeats |
-| `{"type":"query_workspace_state"}` | `lwm query workspaces` | Ack, one snapshot, then EOF |
+| `{"type":"subscribe","events":["workspace_state"]}` | `lwm subscribe --events workspace_state` | Existing subscribed ack, initial snapshot, replacement snapshots, heartbeats |
+| `{"type":"query_workspace_state"}` | `lwm query workspaces` | Query ack, one snapshot, then EOF |
 | `{"type":"switch_workspace_on_monitor","monitor_device_name":"\\\\.\\DISPLAY2","index":2}` | `lwm workspace 2 --monitor '\\.\DISPLAY2'` | Existing ok/error response |
 
-The query deliberately uses the same framed snapshot format as the subscription;
-it is not one unbounded JSON object. The CLI forwards the ack and frames as NDJSON
-for both new read commands. Existing `lwm subscribe` output stays unchanged.
-Commands and queries use separate connections from subscriptions.
+The existing `Subscribe { events }` shape is unchanged. Add `WorkspaceState` to
+EventKind, and snapshot begin/chunk/end/error variants to IpcEvent, all classified
+as `workspace_state`. The existing `lwm subscribe` CLI consumes the Subscribed ack
+and forwards events as NDJSON, including these new variants when requested.
+
+For the one-shot query, the wire ack is
+`{"status":"workspace_state_ready","protocol_version":3}`; the CLI consumes it
+and prints the same snapshot event frames as the subscription. The query shares
+the snapshot builder and bounded encoder, then closes after one complete snapshot.
+It is not one unbounded JSON response. Commands and queries use separate
+connections from an ongoing subscription, as they do today.
 
 ## State model
 
@@ -90,11 +110,12 @@ show-empty, show-icons, include-floating, and icon-deduplication options in YASB
 
 ## Snapshot framing and consistency
 
-Illustrative sequence for a new workspace stream (arrays shortened for clarity):
+Illustrative wire sequence after requesting `workspace_state` (records shortened
+for clarity). The CLI consumes the first line, exactly as existing subscribe does:
 
 ```json
-{"status":"workspace_state_ready","protocol_version":3,"session_id":"opaque-daemon-instance"}
-{"type":"workspace_snapshot_begin","revision":12,"focused_monitor_device_name":"\\\\.\\DISPLAY2"}
+{"status":"subscribed","events":["workspace_state"]}
+{"type":"workspace_snapshot_begin","protocol_version":3,"session_id":"opaque-daemon-instance","revision":12,"focused_monitor_device_name":"\\\\.\\DISPLAY2"}
 {"type":"workspace_snapshot_chunk","revision":12,"records":[{"kind":"monitor","monitor_device_name":"\\\\.\\DISPLAY2","monitor_id":65537,"active_workspace_index":1}]}
 {"type":"workspace_snapshot_chunk","revision":12,"records":[{"kind":"workspace","monitor_device_name":"\\\\.\\DISPLAY2","workspace_index":1,"name":"Code"},{"kind":"window","monitor_device_name":"\\\\.\\DISPLAY2","workspace_index":1,"hwnd":123456,"is_floating":false,"is_sticky":false}]}
 {"type":"workspace_snapshot_end","revision":12}
@@ -103,31 +124,40 @@ Illustrative sequence for a new workspace stream (arrays shortened for clarity):
 The real sequence includes all nine workspace records for every connected monitor.
 
 1. Capture an immutable snapshot and attach its update receiver atomically under
-   the state mutex. Start at revision 0; advance monotonically when semantic state
-   changes. The session ID changes on daemon restart, not on client reconnect.
+   the state mutex, alongside the existing legacy broadcast receiver if needed.
+   Start at revision 0; advance monotonically when semantic state changes. Include
+   protocol version and session ID in each begin event. The session ID changes on
+   daemon restart, not on client reconnect.
 2. Serialize and write outside the lock. Pack records by actual UTF-8 serialized
    byte length, including the trailing newline; every frame is at most 64 KiB.
-   Preflight all record sizes. If any one record cannot fit, emit a bounded stream
-   error and close rather than silently truncate or enter a reconnect loop.
+   Preflight all record sizes. A single oversized record produces
+   `workspace_snapshot_error` with a bounded message, then closes the connection.
+   Never truncate membership or substitute a successful snapshot end. Avoid the
+   old generic oversized-event-to-Lagged substitution for these snapshot frames.
 3. The client stages begin/chunk records and replaces its displayed model only at
    the matching end. EOF/error before end discards the staged snapshot. Never mix
    chunks from different revisions or daemon sessions.
-4. Reuse a shared latest-state channel (Tokio watch with immutable Arc snapshots).
-   Slow consumers finish their current captured snapshot and then receive the
-   newest revision. Skipped intermediate revisions are valid because snapshots
-   replace all state. No unbounded per-client queue or historical replay.
-5. Heartbeat every 30 seconds while no snapshot is being written. Heartbeats may
-   occur between snapshots, never inside a snapshot transaction. EOF/write failure
-   ends the subscription. Clients reconnect with backoff and accept a fresh initial
-   snapshot. A write timeout closes a stalled connection and releases its resources.
+4. Add a shared latest-state channel using existing Tokio watch support and
+   immutable Arc snapshots. The existing subscription handler selects this channel
+   only when workspace_state was requested. Slow consumers finish their current
+   captured snapshot and then receive the newest revision. Skipped intermediate
+   revisions are valid because snapshots replace all state. No unbounded queue.
+5. Reuse the existing subscription heartbeat, disconnect handling, connection
+   permit release, and legacy broadcast delivery. Write each snapshot transaction
+   without interleaving heartbeat or legacy events. Mixed subscriptions resume
+   requested legacy delivery between complete snapshots. If the legacy receiver
+   lags, emit the existing Lagged event between transactions; reconnect recovery
+   captures both initial states atomically. A bounded write timeout closes a
+   stalled connection and releases its resources.
 6. Read-only queries and new subscriptions do not themselves increment revisions.
    The one-shot query terminates after its complete snapshot, with no heartbeat.
 
-Use a separate WorkspaceStateFrame enum and writer. The old IpcEvent broadcast,
-Lagged behavior, and Subscribe default filter remain unchanged. Returning a
-workspace_state_ready ack is an explicit parser transition for the new commands.
-Older daemons reject these unknown commands; the client reports an unsupported
-capability instead of falling back silently to inaccurate membership data.
+Extend IpcEvent and reuse its serialization/writing infrastructure; place record
+types and byte-bounded snapshot encoding in a focused module, not a second public
+subscription protocol. The existing `status`-ack to `type`-event parser transition
+is unchanged. Only explicitly opted-in subscriptions receive the new variants.
+Older daemons reject the unknown workspace_state filter; the CLI/client reports an
+unsupported capability rather than silently reverting to incomplete data.
 
 ## Change publication
 
@@ -170,30 +200,74 @@ one-based to preserve the established API. Convert once at the command boundary.
 
 ## Implementation units and inspectable diffs
 
-1. **Contract and serialization** — add record/frame structs and the three command
-   variants in `crates/ipc/src/lib.rs` (use a focused workspace_state submodule if
-   appropriate). Add protocol 3 tests without changing old subscription defaults.
+1. **Contract and serialization** — extend EventKind/IpcEvent and add the query
+   and targeted-switch variants in `crates/ipc/src/lib.rs` (use a focused
+   workspace_state submodule for record types). Separate the legacy default event
+   set from all known kinds. Add protocol 3 and old-client compatibility fixtures.
 2. **Snapshot builder and publication** — add
    `crates/daemon/src/workspace_ipc.rs`; wire state, startup/subscription handling,
    and post-event publication through `state.rs`, `events.rs`, and `main.rs`.
    Keep snapshot projection testable with synthetic monitor/workspace data.
-3. **Transport** — route the two new read commands in `ipc_server.rs`; share a
-   byte-bounded encoder and writer, atomic initial capture, latest-state delivery,
-   timeout, heartbeat, and disconnect cleanup.
+3. **Transport** — extend existing Subscribe handling in `ipc_server.rs` to attach
+   the latest-state receiver only on opt-in, and route the one-shot query through
+   the same snapshot builder/encoder. Reuse connection lifecycle and event writing.
+   Cover mixed subscriptions, atomic capture, frame limits, and slow readers.
 4. **Switch command and CLI** — update `command_handler.rs`, CLI args/dispatch,
-   response handling, and daemon_cmds streaming support. Reuse transition behavior.
+   response handling, and daemon_cmds event-filter parsing. Preserve `lwm subscribe`
+   behavior without the new filter, and document its legacy default explicitly.
+   Add `query workspaces` and `workspace N --monitor`; reuse transition behavior.
 5. **Documentation and consumer contract** — update `agent_docs/ipc-events.md`
-   with complete sample output, indexes, monitor semantics, and recovery rules.
-   YASB implementation remains a separate change in its own repository.
+   and public Rust API comments with opt-in examples, indexes, monitor semantics,
+   and recovery rules. YASB implementation is a separate repository PR.
 
-Each implementation commit should include its relevant tests. No generated files,
+Each implementation commit includes its relevant tests. No generated/vendor files,
 new third-party dependencies, runtime deployment, or YASB edits are required here.
+
+## Contribution and PR requirements
+
+The upstream gates and architecture boundaries below come from
+[CONTRIBUTING.md](../CONTRIBUTING.md),
+[AGENTS.md](../AGENTS.md), and the current [CI workflow](../.github/workflows/ci.yml).
+PR separation and consumer compatibility are design choices for this contribution.
+
+- Keep this feature on a main-based branch in the personal fork. Submit generic
+  workspace IPC support to LeopardWM; do not include personal bar configuration,
+  icon fonts, or a YASB dependency. YASB consumes the documented protocol in its
+  own main-based feature branch and PR, with its required LeopardWM capability
+  and unsupported-version behavior clearly stated.
+- Preserve the repository boundaries: core_layout stays platform-independent;
+  all new Windows API calls belong in platform_win32 using windows-rs; daemon owns
+  state and event orchestration; cli remains a thin IPC client. Membership records
+  and serialization live in ipc and must not depend on YASB or the daemon crate.
+- Use conventional commits (`feat:`, `fix:`, `docs:`, `test:`, `refactor:` as
+  appropriate), document public APIs, and add tests for new functionality.
+- Before submitting implementation, run `cargo fmt --all`, then
+  `cargo fmt --all -- --check`, `cargo test --all --locked`,
+  `cargo clippy --all --locked -- -D warnings`, and
+  `cargo build --release --locked` on the configured MSVC target. Locked resolution
+  supplements the contribution guide without changing its build/test/lint gates.
+- CI must also pass its existing Scoop-manifest and GUI-subsystem verification.
+  Do not edit generated distribution artifacts just to suppress unrelated failures.
+  Record any pre-existing failure separately; do not claim PR readiness until the
+  required checks are satisfied.
+- PR descriptions explain the initial-membership problem, before/after behavior,
+  opt-in compatibility, wire examples, tests, and the dependent YASB PR when one
+  exists. Keep the final diff focused; consolidate this proposal into maintained
+  IPC documentation before submission if a standalone design file is unnecessary.
+- Merge requires passing CI and at least one approving review. Changes to .github/
+  or SECURITY.md require owner review; neither is part of this proposal's scope.
+  Contributions retain GPL-3.0 licensing.
+
+YASB's local checkout has no root CONTRIBUTING.md. Check its own documented
+contribution guidance, widget conventions, and CI when preparing that separate
+branch; LeopardWM's Rust-specific gates do not establish YASB PR readiness.
 
 ## Required verification before implementation is called complete
 
 | Test | Expected evidence |
 | --- | --- |
-| Legacy wire fixtures | Old query/switch/subscribe messages round-trip unchanged; old all-events subscription never sees new frames |
+| Legacy wire fixtures | Old query/switch/subscribe messages round-trip unchanged; empty/default subscriptions never see new frames; new filter rejected clearly by old daemons |
+| Opt-in and mixed filters | workspace_state alone and combined with legacy kinds deliver requested data; snapshot transactions never interleave legacy events; CLI consumes existing ack |
 | Full initial state | Two monitors, nine slots each, inactive tiled and floating windows included without first switching to them |
 | Projection policies | Minimized/tabbed membership retained; placeholders excluded; sticky and scratchpad cases match documented ownership |
 | Membership updates | Open/close/move/float/sticky transitions update correct source and destination, including inactive workspaces |
@@ -203,7 +277,7 @@ new third-party dependencies, runtime deployment, or YASB edits are required her
 | Slow reader/reconnect | Bounded retained state; newest complete snapshot after skipped revisions; fresh session after restart |
 | Framing | More than 64 KiB total succeeds across bounded frames; non-ASCII byte sizes counted correctly; partial transaction never commits |
 | Explicit targeting | Switching monitor B while A is focused changes only B's active index; active-on-B click focuses B; invalid target has no side effects |
-| Build gates | `cargo fmt --all -- --check`, `cargo test --all --locked`, `cargo build --release --locked` |
+| Build gates | `cargo fmt --all -- --check`, `cargo test --all --locked`, `cargo clippy --all --locked -- -D warnings`, `cargo build --release --locked`, existing CI artifact checks |
 | Desktop acceptance | Separate opt-in deployment verifies two-monitor switching, floating focus restoration, restart, and monitor disconnect |
 
 ## Research basis
