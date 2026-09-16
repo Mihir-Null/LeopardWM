@@ -3567,10 +3567,7 @@ async fn main() -> Result<()> {
         }
 
         sync_pending_layout_apply_timeout_ui(ctx.state, ctx.tray_manager, &*ctx.hotkey_state).await;
-        ctx.state
-            .lock()
-            .await
-            .publish_workspace_state_if_subscribed();
+        ctx.state.lock().await.publish_workspace_state_if_subscribed();
     }
 
     // Stop the update-checker worker so it doesn't hold up shutdown.
