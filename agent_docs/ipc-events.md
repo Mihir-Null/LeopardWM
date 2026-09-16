@@ -26,21 +26,24 @@ Press Ctrl+C to disconnect. The daemon does not need to know who is listening; r
 - **Framing**: newline-delimited JSON (`\n`), one logical message per line. UTF-8.
 - **Per-frame size cap**: 64 KiB (`MAX_IPC_MESSAGE_SIZE` in `crates/ipc/src/lib.rs`).
 
-## Protocol versions and the hotkey query
+## Protocol versions and capability checks
 
-The current IPC protocol is v3; the minimum supported version remains v1.
+The current IPC protocol is v4; the minimum supported version remains v1.
 Version 2 added tabbed-column data and commands. Version 3 adds the one-shot
 `QueryHotkeys` command (`{"type":"query_hotkeys"}`) and `HotkeyList` response
 (`status: "hotkey_list"`) with binding records, scroll modifier, and issues.
+Version 4 adds opt-in complete workspace-state snapshots and monitor-targeted
+workspace switching.
 See [the hotkey query contract](shortcut-guide.md#ipc-contract) for ordering,
 collision resolution, and the distinction between configuration and runtime
 registration health.
 
-The additions do not change the subscription framing or event schemas below.
-Existing v1/v2 subscription clients remain supported. An older daemon does not
-implement the new query simply because an older protocol is still supported;
-use matching CLI and daemon builds for `lwm query hotkeys` and
-`lwm export-shortcut-guide`. Queries need a separate pipe while subscribed.
+These additions preserve older clients because the wire changes are additive and
+an empty subscription filter retains the legacy event set. A protocol number alone
+does not prove workspace-state support: a subscriber must also confirm that the
+`subscribed` response acknowledges `workspace_state`. One-shot consumers require a
+successful `workspace_state_ready` response. Queries need a separate pipe while
+subscribed.
 
 ## Connection lifecycle
 
@@ -102,13 +105,13 @@ lwm workspace 2 --monitor '\\.\DISPLAY2'
 the same event frames as a subscription, then exits. The CLI consumes its initial
 `workspace_state_ready` response. On the wire, send
 `{"type":"query_workspace_state"}`; the first response is
-`{"status":"workspace_state_ready","protocol_version":3}`.
+`{"status":"workspace_state_ready","protocol_version":4}`.
 
 A workspace subscription retains the existing `subscribed` response and echoes
 `workspace_state` in `events`. After either response, switch to the event parser:
 
 ```json
-{"type":"workspace_snapshot_begin","protocol_version":3,"session_id":"opaque-daemon-session","revision":42,"focused_monitor_device_name":"\\\\.\\DISPLAY2"}
+{"type":"workspace_snapshot_begin","protocol_version":4,"session_id":"opaque-daemon-session","revision":42,"focused_monitor_device_name":"\\\\.\\DISPLAY2"}
 {"type":"workspace_snapshot_chunk","revision":42,"records":[{"kind":"monitor","monitor_device_name":"\\\\.\\DISPLAY2","monitor_id":65537,"active_workspace_index":1},{"kind":"workspace","monitor_device_name":"\\\\.\\DISPLAY2","workspace_index":1,"name":"code"},{"kind":"window","monitor_device_name":"\\\\.\\DISPLAY2","workspace_index":1,"hwnd":123456,"is_floating":true,"is_sticky":false}]}
 {"type":"workspace_snapshot_end","revision":42}
 ```
@@ -166,15 +169,16 @@ Unlike snapshot indices, the command index is **one-based (1–9)**, matching ex
 `switch_workspace`. The daemon validates both fields before changing state. A
 successful command selects that monitor/workspace and restores eligible window
 focus, including when the workspace is already active. Empty destinations select
-the monitor/workspace without inventing a window to focus. Other monitors retain
+the monitor/workspace without inventing a window to focus. Supplying `--monitor`
+therefore transfers global monitor focus to that target; omitting it preserves the
+existing focused-monitor behavior. Other monitors retain
 their active workspace indices. Device names are topology identifiers, not durable
 hardware serial numbers; use the latest snapshot after display reconfiguration.
 
 The legacy `query_workspace`, `switch_workspace`, and default subscription wire
 contracts remain unchanged. Old daemons reject the new filter/commands; clients
 must report unsupported capability rather than silently use incomplete legacy data.
-Protocol **3 is provisional** for this branch: upstream PR #110 independently uses
-3, so reconcile the version and history according to merge order. Do not infer
+Workspace IPC is protocol **v4**; v3 remains the hotkey-query addition. Do not infer
 workspace-state support from the numeric version alone; require the acknowledged
 `workspace_state` filter (or successful one-shot handshake).
 
@@ -281,7 +285,8 @@ async fn main() -> anyhow::Result<()> {
     let (reader, mut writer) = tokio::io::split(pipe);
     let mut buf = BufReader::new(reader);
 
-    let cmd = IpcCommand::Subscribe { events: BTreeSet::new() };  // all kinds
+    // Empty preserves legacy kinds. Include WorkspaceState explicitly for snapshots.
+    let cmd = IpcCommand::Subscribe { events: BTreeSet::new() };
     writer.write_all((serde_json::to_string(&cmd)? + "\n").as_bytes()).await?;
 
     let mut line = String::new();
@@ -311,7 +316,7 @@ handle = win32file.CreateFile(
     0, None, win32file.OPEN_EXISTING, 0, None,
 )
 
-# Subscribe (empty events = all kinds)
+# Empty events preserve legacy kinds; include "workspace_state" for snapshots.
 win32file.WriteFile(handle, b'{"type":"subscribe","events":[]}\n')
 
 # Read frames line by line

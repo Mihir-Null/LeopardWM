@@ -651,7 +651,7 @@ mod workspace_stream_tests {
         }
         sender
             .send(IpcEvent::WorkspaceSnapshotBegin {
-                protocol_version: 3,
+                protocol_version: 4,
                 session_id: "test".into(),
                 revision: 43,
                 focused_monitor_device_name: None,
@@ -721,7 +721,7 @@ mod workspace_stream_tests {
         let broadcaster = broadcast::channel(256).0;
         let receiver = broadcaster.subscribe();
         let mut snapshot = vec![IpcEvent::WorkspaceSnapshotBegin {
-            protocol_version: 3,
+            protocol_version: 4,
             session_id: "test".into(),
             revision: 7,
             focused_monitor_device_name: None,

@@ -1,6 +1,8 @@
 # Workspace IPC for native status-bar integration
 
-Status: proposed contract; this commit changes documentation only.
+Status: historical design record. The implementation has landed on this branch;
+the maintained contract is [`ipc-events.md`](ipc-events.md). This document retains
+the original baseline and design rationale for review history.
 Baseline: `main` at `bad5b42` (LeopardWM 0.2.8, IPC protocol 2).
 Target consumer: a native YASB workspace widget, with no YASB dependency in LeopardWM.
 

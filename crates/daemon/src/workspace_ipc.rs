@@ -131,6 +131,17 @@ impl AppState {
         }
     }
 
+    /// Synchronize and publish after an ordinary daemon event only when a
+    /// stream client exists. Query and subscribe handoffs call
+    /// `publish_workspace_state_if_changed` directly so their snapshot is
+    /// always fresh before the receiver is installed.
+    pub(crate) fn publish_workspace_state_if_subscribed(&mut self) {
+        if self.event_broadcaster.receiver_count() == 0 {
+            return;
+        }
+        self.publish_workspace_state_if_changed();
+    }
+
     /// Return frames for the cached state, synchronized by the caller first.
     pub(crate) fn workspace_snapshot_events(&self) -> Vec<IpcEvent> {
         self.workspace_ipc_state

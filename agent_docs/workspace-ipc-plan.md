@@ -1,5 +1,9 @@
 # Workspace IPC implementation plan
 
+Status: historical completed plan. IPC v3 was subsequently assigned to hotkey
+queries by PR #110; workspace IPC uses v4. The maintained wire contract is
+[`ipc-events.md`](ipc-events.md).
+
 Spec: [workspace-ipc-proposal.md](workspace-ipc-proposal.md).
 Branch: feat/workspace-ipc, based on main bad5b42. Implementation authorized.
 

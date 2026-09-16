@@ -415,9 +415,9 @@ fn test_subscribe_workspace_state_filter_parses() {
 
 #[tokio::test]
 async fn test_workspace_query_consumes_ack_and_forwards_complete_snapshot() {
-    let ack = "{\"status\":\"workspace_state_ready\",\"protocol_version\":3}\n";
+    let ack = "{\"status\":\"workspace_state_ready\",\"protocol_version\":4}\n";
     let events = concat!(
-        "{\"type\":\"workspace_snapshot_begin\",\"protocol_version\":3,\"session_id\":\"session\",\"revision\":8,\"focused_monitor_device_name\":null}\n",
+        "{\"type\":\"workspace_snapshot_begin\",\"protocol_version\":4,\"session_id\":\"session\",\"revision\":8,\"focused_monitor_device_name\":null}\n",
         "{\"type\":\"workspace_snapshot_chunk\",\"revision\":8,\"records\":[]}\n",
         "{\"type\":\"workspace_snapshot_end\",\"revision\":8}\n"
     );
@@ -437,7 +437,7 @@ async fn test_workspace_query_consumes_ack_and_forwards_complete_snapshot() {
 
 #[tokio::test]
 async fn test_workspace_query_fails_on_incomplete_snapshot() {
-    let events = "{\"type\":\"workspace_snapshot_begin\",\"protocol_version\":3,\"session_id\":\"session\",\"revision\":8,\"focused_monitor_device_name\":null}\n";
+    let events = "{\"type\":\"workspace_snapshot_begin\",\"protocol_version\":4,\"session_id\":\"session\",\"revision\":8,\"focused_monitor_device_name\":null}\n";
     let mut reader = tokio::io::BufReader::new(events.as_bytes());
     let mut output = Vec::new();
 
@@ -496,7 +496,7 @@ async fn test_subscribe_ack_rejects_missing_workspace_state_capability() {
 
 #[tokio::test]
 async fn test_workspace_subscription_fails_on_partial_snapshot_eof() {
-    let event = "{\"type\":\"workspace_snapshot_begin\",\"protocol_version\":3,\"session_id\":\"session\",\"revision\":8,\"focused_monitor_device_name\":null}\n";
+    let event = "{\"type\":\"workspace_snapshot_begin\",\"protocol_version\":4,\"session_id\":\"session\",\"revision\":8,\"focused_monitor_device_name\":null}\n";
     let mut reader = tokio::io::BufReader::new(event.as_bytes());
     let mut output = Vec::new();
 

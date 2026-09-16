@@ -160,6 +160,57 @@ fn workspace_revisions_track_semantics_and_ignore_geometry() {
     assert!(!records(&state).iter().any(|r| matches!(r, leopardwm_ipc::WorkspaceStateRecord::Monitor { monitor_device_name, .. } if monitor_device_name == "DISPLAY2")));
 }
 
+#[test]
+fn event_publication_skips_projection_without_stream_subscribers() {
+    use leopardwm_ipc::WorkspaceStateRecord as R;
+
+    let mut state = fixture();
+    state.publish_workspace_state_if_changed();
+    state.workspaces.get_mut(&1).unwrap()[0]
+        .insert_window(42, None)
+        .unwrap();
+
+    state.publish_workspace_state_if_subscribed();
+    assert!(
+        !records(&state)
+            .iter()
+            .any(|record| matches!(record, R::Window { hwnd: 42, .. })),
+        "ordinary events must not rebuild workspace IPC state without an opted-in subscriber"
+    );
+
+    state.publish_workspace_state_if_changed();
+    assert!(
+        records(&state)
+            .iter()
+            .any(|record| matches!(record, R::Window { hwnd: 42, .. })),
+        "query/subscribe synchronization must force a fresh projection"
+    );
+}
+
+#[test]
+#[ignore = "manual workspace projection benchmark"]
+fn benchmark_workspace_projection_with_large_membership() {
+    let mut state = fixture();
+    for hwnd in 1..=2_000 {
+        let monitor = if hwnd % 2 == 0 { 1 } else { 2 };
+        let workspace = (hwnd % 9) as usize;
+        state.ensure_workspace_exists(monitor, workspace);
+        state.workspaces.get_mut(&monitor).unwrap()[workspace]
+            .insert_window(hwnd, None)
+            .unwrap();
+    }
+
+    let started = std::time::Instant::now();
+    for _ in 0..1_000 {
+        std::hint::black_box(state.project_workspace_state());
+    }
+    let elapsed = started.elapsed();
+    eprintln!(
+        "workspace projection: 2,000 windows x 1,000 iterations in {elapsed:?} ({:?}/projection)",
+        elapsed / 1_000
+    );
+}
+
 #[tokio::test]
 async fn subscribe_handoff_has_no_duplicate_or_missing_revision() {
     use leopardwm_ipc::IpcEvent;
