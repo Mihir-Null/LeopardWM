@@ -34,7 +34,7 @@ impl Default for WorkspaceIpcState {
 }
 
 impl AppState {
-    fn project_workspace_state(&self) -> WorkspaceStateSnapshot {
+    pub(crate) fn project_workspace_state(&self) -> WorkspaceStateSnapshot {
         let mut monitors: Vec<_> = self.monitors.values().collect();
         monitors.sort_by(|a, b| a.device_name.cmp(&b.device_name).then(a.id.cmp(&b.id)));
         // A merge preview can detach the real window and insert a sentinel at
