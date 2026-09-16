@@ -40,6 +40,9 @@ mod tray;
 mod ui_sync;
 mod update_check;
 mod window_rules;
+mod workspace_ipc;
+#[cfg(test)]
+mod workspace_ipc_tests;
 
 use ipc_server::*;
 use startup::*;
@@ -1442,7 +1445,8 @@ async fn handle_ipc_subscribe(
     // `events::SubscribeStartup` for the contract.
     use leopardwm_ipc::EventKind;
     use leopardwm_platform_win32::get_process_executable;
-    let s = state.lock().await;
+    let mut s = state.lock().await;
+    s.publish_workspace_state_if_changed();
     let receiver = s.event_broadcaster.subscribe();
     let mut snapshot = Vec::new();
 
@@ -1493,6 +1497,10 @@ async fn handle_ipc_subscribe(
             focused_column,
             columns: s.focused_layout_columns(),
         });
+    }
+
+    if events.contains(&EventKind::WorkspaceState) {
+        snapshot.extend(s.workspace_snapshot_events());
     }
 
     let ack = leopardwm_ipc::IpcResponse::Subscribed {
@@ -3559,6 +3567,7 @@ async fn main() -> Result<()> {
         }
 
         sync_pending_layout_apply_timeout_ui(ctx.state, ctx.tray_manager, &*ctx.hotkey_state).await;
+        ctx.state.lock().await.publish_workspace_state_if_changed();
     }
 
     // Stop the update-checker worker so it doesn't hold up shutdown.
