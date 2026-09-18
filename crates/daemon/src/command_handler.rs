@@ -1084,6 +1084,7 @@ impl AppState {
                 if let Err(e) = self.apply_layout() {
                     return IpcResponse::error(format!("Failed to apply layout: {}", e));
                 }
+                self.restore_workspace_floating_focus(monitor, idx);
                 self.sync_foreground_window();
             }
             return IpcResponse::Ok;
@@ -1272,16 +1273,7 @@ impl AppState {
         // Restore the floating window that was focused on this
         // workspace (if it still floats here) so it regains focus on
         // return, before syncing the OS foreground.
-        if let Some(&hwnd) = self.floating_focus.get(&(monitor, idx)) {
-            let still_floating = self
-                .workspaces
-                .get(&monitor)
-                .and_then(|v| v.get(idx))
-                .is_some_and(|ws| ws.is_floating(hwnd));
-            if still_floating {
-                self.previous_focused_hwnd = Some(hwnd);
-            }
-        }
+        self.restore_workspace_floating_focus(monitor, idx);
         self.sync_foreground_window();
         // If a summoned scratchpad lives on this workspace, restore
         // its focus (it would otherwise stay visible but lose focus
@@ -1323,6 +1315,19 @@ impl AppState {
         });
         info!("Switched to workspace {}", index);
         IpcResponse::Ok
+    }
+
+    fn restore_workspace_floating_focus(&mut self, monitor: MonitorId, idx: usize) {
+        if let Some(&hwnd) = self.floating_focus.get(&(monitor, idx)) {
+            let still_floating = self
+                .workspaces
+                .get(&monitor)
+                .and_then(|v| v.get(idx))
+                .is_some_and(|ws| ws.is_floating(hwnd));
+            if still_floating {
+                self.previous_focused_hwnd = Some(hwnd);
+            }
+        }
     }
 
     /// Handle `IpcCommand::MoveToWorkspace`.

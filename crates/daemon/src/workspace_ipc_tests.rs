@@ -53,6 +53,50 @@ fn fixture() -> AppState {
     AppState::new_with_config(Config::default(), monitors)
 }
 
+#[test]
+fn targeted_active_workspace_restores_remembered_floating_focus() {
+    let mut state = fixture();
+    state.workspaces.get_mut(&1).unwrap()[0]
+        .insert_window(100, None)
+        .unwrap();
+    state.workspaces.get_mut(&2).unwrap()[0]
+        .add_floating(200, Rect::new(0, 0, 100, 100))
+        .unwrap();
+    state.focused_monitor = 1;
+    state.previous_focused_hwnd = Some(100);
+    state.floating_focus.insert((2, 0), 200);
+
+    let response = state.handle_command(IpcCommand::SwitchWorkspaceOnMonitor {
+        monitor_device_name: "DISPLAY2".into(),
+        index: 1,
+    });
+
+    assert!(matches!(response, IpcResponse::Ok));
+    assert_eq!(state.focused_monitor, 2);
+    assert_eq!(state.active_workspace_idx(2), 0);
+    assert_eq!(state.previous_focused_hwnd, Some(200));
+    assert_eq!(state.last_broadcast_focused, Some((2, Some(200))));
+}
+
+#[test]
+fn targeted_active_workspace_ignores_stale_floating_focus() {
+    let mut state = fixture();
+    state.workspaces.get_mut(&2).unwrap()[0]
+        .insert_window(300, None)
+        .unwrap();
+    state.focused_monitor = 1;
+    state.previous_focused_hwnd = Some(100);
+    state.floating_focus.insert((2, 0), 200);
+
+    let response = state.handle_command(IpcCommand::SwitchWorkspaceOnMonitor {
+        monitor_device_name: "DISPLAY2".into(),
+        index: 1,
+    });
+
+    assert!(matches!(response, IpcResponse::Ok));
+    assert_eq!(state.previous_focused_hwnd, Some(300));
+}
+
 fn records(state: &AppState) -> Vec<leopardwm_ipc::WorkspaceStateRecord> {
     state
         .workspace_snapshot_events()
