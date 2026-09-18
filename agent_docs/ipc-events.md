@@ -106,6 +106,10 @@ the same event frames as a subscription, then exits. The CLI consumes its initia
 `workspace_state_ready` response. On the wire, send
 `{"type":"query_workspace_state"}`; the first response is
 `{"status":"workspace_state_ready","protocol_version":4}`.
+The CLI gives the acknowledgment and each complete newline-terminated query frame
+a five-second read deadline. A timeout fails the query, including a stalled partial
+frame. The deadline resets for each frame; long-lived subscriptions have no query
+read deadline or total lifetime limit.
 
 A workspace subscription retains the existing `subscribed` response and echoes
 `workspace_state` in `events`. After either response, switch to the event parser:

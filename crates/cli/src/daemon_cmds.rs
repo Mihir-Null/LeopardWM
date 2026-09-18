@@ -6,7 +6,8 @@ use crate::ipc_client::{
     error_chain_has_disconnected_before_response, error_chain_has_pipe_not_found,
     error_chain_indicates_pipe_not_found_timeout, is_non_success_response, open_pipe_with_retry,
     probe_daemon_running, send_command, wait_for_daemon, wait_for_daemon_shutdown,
-    IPC_CONNECT_TIMEOUT, IPC_NOT_FOUND_FAST_FAIL_AFTER, SHUTDOWN_CONFIRM_TIMEOUT,
+    IPC_CONNECT_TIMEOUT, IPC_DEFAULT_RESPONSE_TIMEOUT, IPC_NOT_FOUND_FAST_FAIL_AFTER,
+    SHUTDOWN_CONFIRM_TIMEOUT,
 };
 use crate::output::print_response;
 use anyhow::{Context, Result};
@@ -619,9 +620,15 @@ pub(crate) async fn read_stream_ack<R>(
 where
     R: AsyncBufRead + Unpin,
 {
-    let frame = read_bounded_frame(reader, "stream acknowledgment")
-        .await?
-        .context("Daemon disconnected before sending stream acknowledgment")?;
+    let read = read_bounded_frame(reader, "stream acknowledgment");
+    let frame = if expected == StreamAckKind::WorkspaceState {
+        tokio::time::timeout(IPC_DEFAULT_RESPONSE_TIMEOUT, read)
+            .await
+            .context("Timed out waiting for workspace-state query acknowledgment")??
+    } else {
+        read.await?
+    }
+    .context("Daemon disconnected before sending stream acknowledgment")?;
     let ack: IpcResponse = serde_json::from_slice(&frame).with_context(|| {
         format!(
             "Failed to parse stream acknowledgment: {}",
@@ -675,7 +682,15 @@ where
     let mut snapshot_revision = None;
 
     loop {
-        let Some(frame) = read_bounded_frame(reader, "event frame").await? else {
+        let read = read_bounded_frame(reader, "event frame");
+        let frame = if mode == EventReadMode::WorkspaceQuery {
+            tokio::time::timeout(IPC_DEFAULT_RESPONSE_TIMEOUT, read)
+                .await
+                .context("Timed out waiting for workspace-state query frame")??
+        } else {
+            read.await?
+        };
+        let Some(frame) = frame else {
             return match mode {
                 EventReadMode::WorkspaceQuery => anyhow::bail!(
                     "Daemon disconnected before completing the workspace-state snapshot"

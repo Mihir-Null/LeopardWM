@@ -447,6 +447,88 @@ async fn test_workspace_query_fails_on_incomplete_snapshot() {
     assert!(error.to_string().contains("before completing"));
 }
 
+#[tokio::test(start_paused = true)]
+async fn test_workspace_query_times_out_waiting_for_ack() {
+    let (_writer, reader) = tokio::io::duplex(1024);
+    let mut reader = tokio::io::BufReader::new(reader);
+    let result = tokio::time::timeout(
+        IPC_DEFAULT_RESPONSE_TIMEOUT * 2,
+        read_stream_ack(&mut reader, StreamAckKind::WorkspaceState, None),
+    )
+    .await
+    .expect("query acknowledgment must have its own deadline");
+    assert!(result.unwrap_err().to_string().contains("Timed out"));
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_workspace_query_times_out_on_stalled_or_partial_frame() {
+    use tokio::io::AsyncWriteExt;
+    for prefix in ["", "{\"type\":\"workspace_snapshot_begin\""] {
+        let (mut writer, reader) = tokio::io::duplex(1024);
+        writer.write_all(prefix.as_bytes()).await.unwrap();
+        let mut reader = tokio::io::BufReader::new(reader);
+        let mut output = Vec::new();
+        let result = tokio::time::timeout(
+            IPC_DEFAULT_RESPONSE_TIMEOUT * 2,
+            forward_event_frames(&mut reader, &mut output, EventReadMode::WorkspaceQuery),
+        )
+        .await
+        .expect("query frames must have their own deadline");
+        assert!(result.unwrap_err().to_string().contains("Timed out"));
+        assert!(output.is_empty());
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_workspace_query_read_deadline_resets_for_each_frame() {
+    use tokio::io::AsyncWriteExt;
+    let frames = [
+        "{\"type\":\"workspace_snapshot_begin\",\"protocol_version\":4,\"session_id\":\"session\",\"revision\":8,\"focused_monitor_device_name\":null}\n",
+        "{\"type\":\"workspace_snapshot_chunk\",\"revision\":8,\"records\":[]}\n",
+        "{\"type\":\"workspace_snapshot_end\",\"revision\":8}\n",
+    ];
+    let (mut writer, reader) = tokio::io::duplex(1024);
+    let producer = tokio::spawn(async move {
+        for frame in frames {
+            tokio::time::sleep(IPC_DEFAULT_RESPONSE_TIMEOUT * 3 / 4).await;
+            writer.write_all(frame.as_bytes()).await.unwrap();
+        }
+    });
+    let mut reader = tokio::io::BufReader::new(reader);
+    let mut output = Vec::new();
+    forward_event_frames(&mut reader, &mut output, EventReadMode::WorkspaceQuery)
+        .await
+        .unwrap();
+    producer.await.unwrap();
+    assert_eq!(output, frames.concat().as_bytes());
+}
+
+#[tokio::test(start_paused = true)]
+async fn test_subscription_allows_idle_longer_than_query_read_timeout() {
+    use tokio::io::AsyncWriteExt;
+    for workspace_state in [false, true] {
+        let (mut writer, reader) = tokio::io::duplex(1024);
+        let producer = tokio::spawn(async move {
+            tokio::time::sleep(IPC_DEFAULT_RESPONSE_TIMEOUT * 2).await;
+            writer
+                .write_all(b"{\"type\":\"heartbeat\",\"uptime_seconds\":10}\n")
+                .await
+                .unwrap();
+        });
+        let mut reader = tokio::io::BufReader::new(reader);
+        let mut output = Vec::new();
+        forward_event_frames(
+            &mut reader,
+            &mut output,
+            EventReadMode::Subscribe { workspace_state },
+        )
+        .await
+        .unwrap();
+        producer.await.unwrap();
+        assert_eq!(output, b"{\"type\":\"heartbeat\",\"uptime_seconds\":10}\n");
+    }
+}
+
 #[tokio::test]
 async fn test_workspace_subscription_rejects_orphan_chunk_and_end() {
     for event in [
