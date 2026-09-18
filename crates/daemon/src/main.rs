@@ -1446,8 +1446,12 @@ async fn handle_ipc_subscribe(
     use leopardwm_ipc::EventKind;
     use leopardwm_platform_win32::get_process_executable;
     let mut s = state.lock().await;
-    s.publish_workspace_state_if_changed();
-    let receiver = s.event_broadcaster.subscribe();
+    let receiver = if events.contains(&EventKind::WorkspaceState) {
+        s.publish_workspace_state_if_changed();
+        s.workspace_event_broadcaster.subscribe()
+    } else {
+        s.event_broadcaster.subscribe()
+    };
     let mut snapshot = Vec::new();
 
     if events.contains(&EventKind::Workspace) {

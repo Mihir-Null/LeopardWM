@@ -90,7 +90,7 @@ The `events` field of `Subscribe` accepts any subset of filter names (comma-sepa
 
 ## Complete workspace state
 
-This opt-in extension reuses `Subscribe`, `IpcEvent`, and the existing broadcaster.
+This opt-in extension reuses `Subscribe`, `IpcEvent`, and the existing transport.
 It provides initial membership and replacement snapshots, including changes on
 inactive workspaces. It is intended for bars and other state consumers.
 
@@ -153,7 +153,12 @@ replacements, so a consumer does not need intervening revisions to reconstruct s
 Initial capture and receiver creation happen under the same AppState lock. Live
 transactions are broadcast contiguously under that lock; heartbeat and legacy
 frames do not interleave a transaction. Pipe writes happen outside the lock and
-have a ten-second deadline. The broadcaster retains 256 **frames**, not snapshots.
+have a ten-second deadline. Each broadcaster retains 256 **frames**, not snapshots.
+Workspace-enabled subscriptions (including mixed filters) use a separate broadcaster
+that also carries legacy events. Workspace snapshots never consume legacy-only
+subscribers' buffer capacity. Ordinary event processing projects workspace state
+only while a workspace-enabled receiver exists; query/subscribe capture always
+refreshes it under the lock.
 For workspace subscribers, any overflow emits `lagged` and closes the pipe. Discard
 partial state and reconnect for a fresh initial snapshot; also discard partial
 state on EOF, error, timeout or an unexpected transaction boundary. Initial snapshots

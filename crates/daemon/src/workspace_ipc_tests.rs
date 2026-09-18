@@ -165,7 +165,7 @@ fn workspace_revisions_track_semantics_and_ignore_geometry() {
         .unwrap();
     state.config.workspaces.names = vec!["old label".into()];
     state.publish_workspace_state_if_changed();
-    let mut receiver = state.event_broadcaster.subscribe();
+    let mut receiver = state.workspace_event_broadcaster.subscribe();
     state.workspaces.get_mut(&1).unwrap()[0].update_floating(200, Rect::new(10, 10, 200, 300));
     state.previous_focused_hwnd = Some(200);
     state.publish_workspace_state_if_changed();
@@ -229,6 +229,114 @@ fn event_publication_skips_projection_without_stream_subscribers() {
             .any(|record| matches!(record, R::Window { hwnd: 42, .. })),
         "query/subscribe synchronization must force a fresh projection"
     );
+}
+
+#[tokio::test]
+async fn legacy_subscription_does_not_trigger_workspace_publication() {
+    use leopardwm_ipc::IpcEvent;
+    let state = Arc::new(Mutex::new(fixture()));
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    handle_ipc_subscribe(&state, EventKind::legacy_default(), tx).await;
+    let mut legacy = rx.await.unwrap();
+    let mut s = state.lock().await;
+    s.publish_workspace_state_if_changed();
+    let initial = s.workspace_snapshot_events();
+    s.config.workspaces.names = vec!["fresh".into()];
+    s.publish_workspace_state_if_subscribed();
+    assert_eq!(s.workspace_snapshot_events(), initial);
+
+    // Forced query capture must be fresh without enqueueing workspace frames
+    // for an existing legacy stream.
+    s.publish_workspace_state_if_changed();
+    assert_ne!(s.workspace_snapshot_events(), initial);
+    s.broadcast_event(IpcEvent::ConfigReloaded);
+    assert!(matches!(
+        legacy.receiver.try_recv().unwrap(),
+        IpcEvent::ConfigReloaded
+    ));
+    assert!(legacy.receiver.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn workspace_traffic_cannot_evict_legacy_events_with_mixed_subscribers() {
+    use leopardwm_ipc::IpcEvent;
+    let state = Arc::new(Mutex::new(fixture()));
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    handle_ipc_subscribe(&state, EventKind::legacy_default(), tx).await;
+    let mut legacy = rx.await.unwrap();
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    let mut kinds = EventKind::legacy_default();
+    kinds.insert(EventKind::WorkspaceState);
+    handle_ipc_subscribe(&state, kinds, tx).await;
+    let mut mixed = rx.await.unwrap();
+    let mut s = state.lock().await;
+
+    s.broadcast_event(IpcEvent::ConfigReloaded);
+    assert!(matches!(
+        mixed.receiver.try_recv().unwrap(),
+        IpcEvent::ConfigReloaded
+    ));
+    s.broadcast_focused_window_if_changed(1, None);
+    assert!(matches!(
+        mixed.receiver.try_recv().unwrap(),
+        IpcEvent::FocusedWindowChanged {
+            monitor: 1,
+            hwnd: None,
+            ..
+        }
+    ));
+    for i in 0..300 {
+        s.config.workspaces.names = vec![format!("label {i}")];
+        s.publish_workspace_state_if_subscribed();
+        assert!(matches!(
+            mixed.receiver.try_recv().unwrap(),
+            IpcEvent::WorkspaceSnapshotBegin { .. }
+        ));
+        loop {
+            if matches!(
+                mixed.receiver.try_recv().unwrap(),
+                IpcEvent::WorkspaceSnapshotEnd { .. }
+            ) {
+                break;
+            }
+        }
+    }
+    assert!(matches!(
+        legacy.receiver.try_recv().unwrap(),
+        IpcEvent::ConfigReloaded
+    ));
+    assert!(matches!(
+        legacy.receiver.try_recv().unwrap(),
+        IpcEvent::FocusedWindowChanged {
+            monitor: 1,
+            hwnd: None,
+            ..
+        }
+    ));
+    assert!(legacy.receiver.try_recv().is_err());
+
+    // Dropping the last workspace receiver stops ordinary projection, even
+    // while legacy clients remain; a later handoff still captures fresh state.
+    drop(mixed);
+    let last = s.workspace_snapshot_events();
+    s.config.workspaces.names = vec!["after disconnect".into()];
+    s.publish_workspace_state_if_subscribed();
+    assert_eq!(s.workspace_snapshot_events(), last);
+    drop(s);
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    handle_ipc_subscribe(
+        &state,
+        [EventKind::WorkspaceState].into_iter().collect(),
+        tx,
+    )
+    .await;
+    let fresh = rx.await.unwrap();
+    assert!(fresh.snapshot.iter().any(|event| match event {
+        IpcEvent::WorkspaceSnapshotChunk { records, .. } => records.iter().any(|record| {
+            matches!(record, leopardwm_ipc::WorkspaceStateRecord::Workspace { name: Some(name), .. } if name == "after disconnect")
+        }),
+        _ => false,
+    }));
 }
 
 #[test]
@@ -381,7 +489,7 @@ fn drag_preview_keeps_temporarily_detached_window_in_source_workspace() {
         .insert_window(10, None)
         .unwrap();
     state.publish_workspace_state_if_changed();
-    let mut rx = state.event_broadcaster.subscribe();
+    let mut rx = state.workspace_event_broadcaster.subscribe();
     state.workspaces.get_mut(&1).unwrap()[0]
         .remove_window(10)
         .unwrap();
