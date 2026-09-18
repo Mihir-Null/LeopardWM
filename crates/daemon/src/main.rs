@@ -3212,6 +3212,15 @@ async fn handle_display_change_settled(ctx: &mut EventLoopCtx<'_>) {
     }
 }
 
+/// Finish each processed event before waiting for the next one.
+async fn finish_daemon_event(ctx: &EventLoopCtx<'_>) {
+    sync_pending_layout_apply_timeout_ui(ctx.state, ctx.tray_manager, &*ctx.hotkey_state).await;
+    ctx.state
+        .lock()
+        .await
+        .publish_workspace_state_if_subscribed();
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -3570,11 +3579,7 @@ async fn main() -> Result<()> {
             }
         }
 
-        sync_pending_layout_apply_timeout_ui(ctx.state, ctx.tray_manager, &*ctx.hotkey_state).await;
-        ctx.state
-            .lock()
-            .await
-            .publish_workspace_state_if_subscribed();
+        finish_daemon_event(&ctx).await;
     }
 
     // Stop the update-checker worker so it doesn't hold up shutdown.

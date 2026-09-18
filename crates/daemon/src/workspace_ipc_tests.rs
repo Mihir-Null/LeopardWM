@@ -97,6 +97,30 @@ fn targeted_active_workspace_ignores_stale_floating_focus() {
     assert_eq!(state.previous_focused_hwnd, Some(300));
 }
 
+#[test]
+fn targeted_current_workspace_preserves_current_focus() {
+    for current in [100, 300] {
+        let mut state = fixture();
+        let ws = &mut state.workspaces.get_mut(&1).unwrap()[0];
+        ws.insert_window(100, None).unwrap();
+        ws.add_floating(200, Rect::new(0, 0, 100, 100)).unwrap();
+        ws.add_floating(300, Rect::new(0, 0, 100, 100)).unwrap();
+        state.focused_monitor = 1;
+        state.previous_focused_hwnd = Some(current);
+        // Remembered from an earlier workspace visit, before the user focused
+        // a different tiled or floating window on the current workspace.
+        state.floating_focus.insert((1, 0), 200);
+
+        let response = state.handle_command(IpcCommand::SwitchWorkspaceOnMonitor {
+            monitor_device_name: "DISPLAY1".into(),
+            index: 1,
+        });
+
+        assert!(matches!(response, IpcResponse::Ok));
+        assert_eq!(state.previous_focused_hwnd, Some(current));
+    }
+}
+
 fn records(state: &AppState) -> Vec<leopardwm_ipc::WorkspaceStateRecord> {
     state
         .workspace_snapshot_events()

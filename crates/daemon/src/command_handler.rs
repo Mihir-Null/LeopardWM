@@ -1084,7 +1084,9 @@ impl AppState {
                 if let Err(e) = self.apply_layout() {
                     return IpcResponse::error(format!("Failed to apply layout: {}", e));
                 }
-                self.restore_workspace_floating_focus(monitor, idx);
+                if !target_was_focused {
+                    self.restore_workspace_floating_focus(monitor, idx);
+                }
                 self.sync_foreground_window();
             }
             return IpcResponse::Ok;
